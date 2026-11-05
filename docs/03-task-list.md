@@ -240,6 +240,62 @@ Buat test `vitest` minimal:
 
 ---
 
+## FASE 5: Enhancement Blok & Styling
+
+> Status per 2026-11-05: **keempat item di bawah belum ada** di implementasi saat ini. Tidak ada perubahan tabel database (semua disimpan di `Page.content` JSON); perubahan hanya di schema dokumen, registry blok, inspector, renderer kanvas, dan renderer export.
+
+### Task 5.1: Navbar brand berupa gambar/logo
+**Validasi saat ini:** `navbar` hanya punya `props.brand` (teks) dan dirender sebagai `<span>` di kanvas maupun export. Tidak ada dukungan logo.
+
+- Tambahkan props opsional pada `navbar`: `brandType?: "text" | "image"`, `brandImage?: string` (URL), `brandImageAlt?: string`, `brandImageWidth?: string` (mis. `120px`).
+- `brandType` default `"text"` agar dokumen lama tetap valid.
+- Validasi Zod (`blockPropsSchemas.navbar`): `brandImage` wajib lolos `isSafeUrl` (hanya `https:`, `http:`, `/…`, bukan `data:`/`javascript:`); `alt` maks 200 karakter; lebar hanya pola `^\d{1,4}(px|%|rem)$`.
+- Registry (`navbar.fields`): tambah select "Tipe brand" (`text`/`image`), input "URL logo", "Alt logo", "Lebar logo". Sembunyikan field yang tidak relevan bila memungkinkan.
+- Renderer kanvas (`block-content.tsx`) dan export (`render-html.ts`): bila `brandType === "image"` dan `brandImage` valid → `<img src alt style="width:…" />`; selain itu tetap render teks brand. Semua atribut di-escape.
+- **Selesai jika:** navbar dengan logo tampil di kanvas, preview, dan export; URL `javascript:` ditolak; dokumen navbar lama (tanpa `brandType`) tetap valid dan tampil sebagai teks.
+
+### Task 5.2: Font eksternal (WOFF2/WOFF/TTF/OTF via URL)
+**Validasi saat ini:** tidak ada dukungan font sama sekali. `STYLE_KEYS` tidak punya `fontFamily`, export tidak menghasilkan `@font-face`, dan semua halaman memakai font sistem.
+
+- **Keputusan:** MVP memakai **URL font**, bukan upload file (fitur upload masih di luar scope). Format yang didukung: **WOFF2 (disarankan)**, WOFF, TTF, OTF. Validasi ekstensi dari path URL; tolak URL tanpa ekstensi yang didukung.
+- Tambah tipe di dokumen: `document.fonts?: Array<{ id: string; family: string; url: string; weight?: string; style?: "normal" | "italic" }>`, maksimal 3 font. `normalizeDocument` mengisi `fonts: []` bila tidak ada. Schema tetap menerima dokumen lama.
+- Validasi: `family` hanya huruf/angka/spasi/strip maks 60 karakter; `url` wajib `https:` (bukan `data:`), tanpa karakter `"'()\s` di dalam URL; `weight` hanya `100`–`900`.
+- Tambah style key `fontFamily` (maks 100 karakter, hanya huruf/angka/spasi/koma/strip). Nilai hanya diterapkan bila cocok dengan `family` yang terdaftar di `document.fonts`, selain itu dibuang oleh sanitizer.
+- UI: panel "Tipografi" di inspector halaman (bukan per blok) untuk menambah/menghapus font (family, URL, weight, style) + pilihan "Font default halaman". Panel blok menampilkan select `fontFamily` berisi font terdaftar + font sistem.
+- Kanvas: suntikkan `<style>` berisi `@font-face` yang sama dengan export agar WYSIWYG.
+- Export/preview: bangkitkan `@font-face { font-family:"…"; src:url("…") format("woff2"); font-weight:…; font-style:…; font-display:swap; }` di `<head>`, dan terapkan `font-family` pada blok/body.
+- **Catatan CORS:** file font di domain lain harus mengirim `Access-Control-Allow-Origin`, jika tidak browser memblokir. Tampilkan hint ini di form.
+- **Selesai jika:** menambah 1 font WOFF2 lalu menerapkannya ke heading membuat tampilan kanvas, preview, dan export sama; URL non-https atau ekstensi tidak dikenal ditolak; export tidak mengandung `<script>`.
+
+### Task 5.3: Background gradasi
+**Validasi saat ini:** hanya `backgroundColor` yang didukung. `linear-gradient(...)` tidak bisa dipakai karena key `backgroundImage` belum ada di whitelist; menaruhnya di `backgroundColor` menghasilkan CSS tidak valid.
+
+- Tambah style key `backgroundImage` dengan validator khusus: hanya menerima `linear-gradient(...)`, `radial-gradient(...)`, atau `conic-gradient(...)`; panjang maks 200 karakter; karakter hanya `[a-zA-Z0-9#%.,\s()\-]`; wajib menolak `url(`, `expression(`, `javascript:`, `<`, `>`, `{`, `}`, `;`, dan tanda kutip.
+- Update `renderStyleAttribute` agar key `backgroundImage` dipetakan ke `background-image` (sudah otomatis lewat konversi camelCase) tetapi memakai validator gradasi, bukan validator style biasa.
+- Inspector: kontrol "Gradasi latar" berupa builder sederhana (tipe linear/radial, sudut 0–360 untuk linear, 2–3 color stop) yang menulis `backgroundImage`. Tombol "Hapus gradasi" mengosongkan nilai.
+- Renderer kanvas + export memakai properti yang sama; tidak ada perbedaan hasil.
+- **Selesai jika:** gradasi tampil di kanvas, preview, dan export; nilai berbahaya (`url(...)`, `;`, `<`) ditolak; unit test baru mencakup validasi gradasi.
+
+### Task 5.4: Background image pada `section` dan `hero`
+**Validasi saat ini:** `section` punya `props: {}` (strict, tanpa background) dan `hero` tidak punya gambar. `style.backgroundImage` belum ada, dan `url()` sengaja diblokir sanitizer, sehingga background image memang belum bisa.
+
+- Tambah props opsional pada `section` **dan** `hero`: `backgroundImage?: string`, `backgroundSize?: "cover" | "contain" | "auto"`, `backgroundPosition?: "center" | "top" | "bottom" | "left" | "right"`, `overlayColor?: string` (hex `#rrggbb`), `overlayOpacity?: number` (0–100), `minHeight?: string` (mis. `320px`).
+- Validasi URL background: hanya `https:`/`http:` (relatif `/…` boleh), **tolak** `data:`, `javascript:`, karakter `"'()\s\\`, dan `)` mentah; escape saat render.
+- Renderer kanvas + export:
+  - Tanpa overlay: `background-image:url("...");background-size:...;background-position:...`.
+  - Dengan overlay: `background-image:linear-gradient(rgba(r,g,b,a),rgba(r,g,b,a)),url("...")` agar overlay satu elemen (aman untuk export).
+  - `minHeight` diterapkan sebagai `min-height`.
+- Inspector: field "Gambar latar (URL)", "Ukuran", "Posisi", "Warna overlay", "Opacity overlay" (slider 0–100), "Tinggi minimum". Sertakan tombol "Hapus gambar latar".
+- Dokumen lama tanpa props baru tetap valid karena semua opsional.
+- **Selesai jika:** gambar latar tampil identik di kanvas, preview, dan export; overlay bekerja; URL berbahaya ditolak (ada unit test); halaman dengan `section` lama tetap dapat disimpan.
+
+### Task 5.5: Test regresi Fase 5
+- Tambah unit test: navbar `brandType=image` (render `<img>`, URL aman), validasi font (ekstensi, scheme), validasi gradasi, validasi background image + overlay, dan kompatibilitas dokumen lama (tanpa props baru) — pastikan semua tetap lolos `parseDocument`.
+- Tambah pemeriksaan bahwa output export untuk semua kombinasi di atas bebas `<script`, `javascript:`, dan `onerror=`.
+- **Selesai jika:** `npm run typecheck && npm run lint && npm test && npm run build` hijau.
+
+---
+
 ## Ringkasan Definisi Selesai (Definition of Done) MVP
 
 1. User dapat register, login, logout.
