@@ -178,6 +178,18 @@
 - `app/error.tsx`, `app/global-error.tsx`, `app/not-found.tsx`, `error.tsx` + `loading.tsx` untuk `(app)`, `editor`, `admin`.
 - **Selesai jika:** `notFound()` menampilkan halaman 404 Indonesia.
 
+### Task 3.16: Perbaikan posisi dialog (admin)
+- **Masalah:** dialog admin tampil di pojok kiri atas, bukan di tengah layar.
+- **Penyebab:** preflight Tailwind v4 menetapkan `margin: 0` pada semua elemen, menghapus `margin: auto` bawaan `<dialog>` sehingga modal tidak terpusat.
+- **Perbaikan:** tambahkan `m-auto` pada className elemen `<dialog>` di `components/ui/dialog.tsx`, plus `max-h-[90vh] overflow-y-auto` agar konten panjang tetap dapat digulir di dalam viewport.
+- **Selesai jika:** dialog di `/admin/users` dan `/admin/templates` muncul di tengah pada desktop dan mobile, dan konten panjang dapat digulir.
+
+### Task 3.17: Perbaikan drag & drop editor
+- **Masalah:** blok dari palette tidak bisa ditarik ke kanvas.
+- **Penyebab:** `DndContext` hanya membungkus `Canvas`, sedangkan item palette memakai `useDraggable` di luar context; target drop juga hanya berupa celah tipis 6px sehingga sulit dikenai.
+- **Perbaikan:** angkat `DndContext` + `DragOverlay` ke `features/editor/components/dnd-provider.tsx` yang membungkus palette, kanvas, dan inspector. Setiap blok kini menjadi droppable (drop di atas container = append ke container; drop di atas blok non-container = sisipkan sebelum blok; drop di celah = posisi presisi). Celah diperbesar menjadi 8px dan menyala saat hover.
+- **Selesai jika:** blok bisa ditarik dari palette ke container kosong, dipindah antar container, diurutkan ulang, dan `column` hanya diterima di dalam `columns`.
+
 ---
 
 ## FASE 4: Integration & State

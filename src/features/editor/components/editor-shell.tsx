@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Canvas } from "@/features/editor/components/canvas";
+import { EditorDnd } from "@/features/editor/components/dnd-provider";
 import {
   ConflictDialog,
   SessionExpiredDialog,
@@ -327,11 +328,13 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
           exporting={exporting}
         />
 
-        <div className="flex flex-1 overflow-hidden">
-          <Palette />
-          <Canvas />
-          <Inspector />
-        </div>
+        <EditorDnd>
+          <div className="flex flex-1 overflow-hidden">
+            <Palette />
+            <Canvas />
+            <Inspector />
+          </div>
+        </EditorDnd>
       </div>
 
       <VersionsDialog
