@@ -105,6 +105,86 @@ describe("builder document schema", () => {
     }
   });
 
+  it("accepts navbar logo props and rejects unsafe logo urls", () => {
+    const doc = createEmptyDocument("Test");
+    doc.blocks.nav = {
+      id: "nav",
+      type: "navbar",
+      props: {
+        brand: "Brand",
+        items: [],
+        brandType: "image",
+        brandImage: "https://example.com/logo.png",
+        brandImageWidth: "120px",
+      },
+      style: {},
+      children: [],
+    };
+    doc.blocks.root!.children = ["nav"];
+    expect(() => parseDocument(doc)).not.toThrow();
+
+    doc.blocks.nav!.props.brandImage = "javascript:alert(1)";
+    expect(() => parseDocument(doc)).toThrow();
+  });
+
+  it("accepts section background props and rejects data urls", () => {
+    const doc = createEmptyDocument("Test");
+    doc.blocks.sec = {
+      id: "sec",
+      type: "section",
+      props: {
+        backgroundImage: "https://example.com/bg.jpg",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        overlayColor: "#000000",
+        overlayOpacity: 40,
+        minHeight: "320px",
+      },
+      style: {},
+      children: [],
+    };
+    doc.blocks.root!.children = ["sec"];
+    expect(() => parseDocument(doc)).not.toThrow();
+
+    doc.blocks.sec!.props.backgroundImage = "data:image/png;base64,AAAA";
+    expect(() => parseDocument(doc)).toThrow();
+  });
+
+  it("accepts safe gradients and rejects unsafe background images", () => {
+    const doc = docWithText("gradien");
+    doc.blocks.t1!.style = { backgroundImage: "linear-gradient(135deg,#000000,#ffffff)" };
+    expect(() => parseDocument(doc)).not.toThrow();
+
+    doc.blocks.t1!.style = { backgroundImage: "url(javascript:alert(1))" };
+    expect(() => parseDocument(doc)).toThrow();
+  });
+
+  it("accepts safe fonts and rejects insecure font urls", () => {
+    const doc = createEmptyDocument("Font");
+    doc.fonts = [
+      { id: "f1", family: "Inter", url: "https://example.com/inter.woff2", weight: "400" },
+    ];
+    expect(() => parseDocument(doc)).not.toThrow();
+
+    doc.fonts = [{ id: "f1", family: "Inter", url: "http://example.com/inter.woff2" }];
+    expect(() => parseDocument(doc)).toThrow();
+
+    doc.fonts = Array.from({ length: 4 }, (_, index) => ({
+      id: `f${index}`,
+      family: `Font ${index}`,
+      url: "https://example.com/font.woff2",
+    }));
+    expect(() => parseDocument(doc)).toThrow();
+  });
+
+  it("normalizes legacy documents without fonts", () => {
+    const legacy: Record<string, unknown> = { ...createEmptyDocument("Lama") };
+    delete legacy.fonts;
+
+    const parsed = parseDocument(legacy);
+    expect(parsed.fonts).toEqual([]);
+  });
+
   it("rejects documents deeper than 12 levels", () => {
     const doc = createEmptyDocument("Test");
     let parentId = doc.rootId;
