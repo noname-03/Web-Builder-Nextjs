@@ -134,6 +134,52 @@ export async function duplicatePage(input: { userId: string; pageId: string }) {
   return createWithUniqueSlug({ projectId: source.projectId, title, content: document });
 }
 
+export async function getPageDocument(input: { userId: string; pageId: string }) {
+  const page = await findOwnedPage(input);
+  if (!page) throw new AppError("NOT_FOUND", "Halaman tidak ditemukan.");
+  return { document: normalizeDocument(page.content, page.title), revision: page.revision };
+}
+
+export async function forceSavePageContent(input: {
+  userId: string;
+  pageId: string;
+  content: unknown;
+}) {
+  assertContentSize(input.content);
+  const document = normalizeDocument(input.content);
+  const page = await findOwnedPage({ pageId: input.pageId, userId: input.userId });
+  if (!page) throw new AppError("NOT_FOUND", "Halaman tidak ditemukan.");
+
+  const count = await updatePageContent({
+    pageId: page.id,
+    userId: input.userId,
+    content: toJson(document),
+    baseRevision: page.revision,
+  });
+
+  if (count === 0) throw new AppError("REVISION_CONFLICT", "Gagal menimpa halaman. Coba lagi.");
+
+  const updated = await getPageRevision({ pageId: page.id });
+  return { revision: updated?.revision ?? page.revision + 1, document };
+}
+
+export async function createPageFromContent(input: {
+  userId: string;
+  projectId: string;
+  title: string;
+  content: unknown;
+}) {
+  const project = await findOwnedProject({ projectId: input.projectId, userId: input.userId });
+  if (!project) throw new AppError("NOT_FOUND", "Project tidak ditemukan.");
+
+  const document = normalizeDocument(input.content, input.title);
+  return createWithUniqueSlug({
+    projectId: input.projectId,
+    title: `${input.title} (Konflik)`.slice(0, 150),
+    content: document,
+  });
+}
+
 export async function savePageContent(input: {
   userId: string;
   pageId: string;

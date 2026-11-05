@@ -19,6 +19,7 @@ export async function listAllTemplates() {
       id: true,
       name: true,
       description: true,
+      content: true,
       isActive: true,
       updatedAt: true,
     },
