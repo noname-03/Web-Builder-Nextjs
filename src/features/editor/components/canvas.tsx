@@ -76,6 +76,19 @@ function BlockNode({ id }: { id: string }) {
       }}
       className={clsx("group relative rounded-sm", isDragging && "z-20")}
     >
+      {!isRoot ? (
+        <button
+          type="button"
+          {...listeners}
+          {...attributes}
+          aria-label="Pindahkan blok"
+          title="Tarik untuk memindahkan blok"
+          className="absolute -left-2 top-1 z-10 cursor-grab rounded border border-slate-200 bg-white px-1 py-0.5 text-[10px] leading-3 text-slate-400 opacity-40 hover:opacity-100 group-hover:opacity-100"
+        >
+          ⋮⋮
+        </button>
+      ) : null}
+
       <div
         ref={setDropRef}
         className={clsx(
@@ -98,15 +111,6 @@ function BlockNode({ id }: { id: string }) {
             selected && "flex",
           )}
         >
-          <button
-            type="button"
-            {...listeners}
-            {...attributes}
-            aria-label="Pindahkan blok"
-            className="cursor-grab rounded px-1 py-0.5 hover:bg-slate-100"
-          >
-            ⋮⋮
-          </button>
           <span className="px-1 text-slate-500">{definition.label}</span>
           <button
             type="button"

@@ -187,7 +187,7 @@
 ### Task 3.17: Perbaikan drag & drop editor
 - **Masalah:** blok dari palette tidak bisa ditarik ke kanvas.
 - **Penyebab:** `DndContext` hanya membungkus `Canvas`, sedangkan item palette memakai `useDraggable` di luar context; target drop juga hanya berupa celah tipis 6px sehingga sulit dikenai.
-- **Perbaikan:** angkat `DndContext` + `DragOverlay` ke `features/editor/components/dnd-provider.tsx` yang membungkus palette, kanvas, dan inspector. Setiap blok kini menjadi droppable (drop di atas container = append ke container; drop di atas blok non-container = sisipkan sebelum blok; drop di celah = posisi presisi). Celah diperbesar menjadi 8px dan menyala saat hover.
+- **Perbaikan:** angkat `DndContext` + `DragOverlay` ke `features/editor/components/dnd-provider.tsx` yang membungkus palette, kanvas, dan inspector. Setiap blok kini menjadi droppable (drop di atas container = append ke container; drop di atas blok non-container = sisipkan sebelum blok; drop di celah = posisi presisi). Celah diperbesar menjadi 8px dan menyala saat hover. Grip drag (`⋮⋮`) pada tiap blok selalu terlihat agar blok dapat dipindah tanpa harus menebak area hover.
 - **Selesai jika:** blok bisa ditarik dari palette ke container kosong, dipindah antar container, diurutkan ulang, dan `column` hanya diterima di dalam `columns`.
 
 ---
