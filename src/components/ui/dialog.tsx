@@ -42,7 +42,7 @@ export function Dialog({ open, onClose, title, description, children, footer }: 
     <dialog
       ref={ref}
       aria-labelledby="dialog-title"
-      className="w-[min(92vw,34rem)] rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-xl"
+      className="m-auto max-h-[90vh] w-[min(92vw,34rem)] overflow-y-auto rounded-lg border border-slate-200 bg-white p-0 text-slate-900 shadow-xl"
     >
       <div className="flex items-start justify-between gap-4 border-b border-slate-200 px-5 py-4">
         <div>
