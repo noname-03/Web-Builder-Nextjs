@@ -354,6 +354,151 @@ Buat test `vitest` minimal:
 
 ---
 
+## FASE 7: AI Prompt Builder (Generate Halaman dari Prompt)
+
+> **Validasi saat ini: SELURUHNYA BELUM ADA.** Tidak ada kode untuk panggilan LLM, tabel konfigurasi AI, enkripsi data sensitif, kolom prompt di editor, maupun `ENCRYPTION_KEY` di `.env.example`. `OPENAI`/`chat/completions`/`createCipheriv` tidak ditemukan di `src/` dan `prisma/`.
+>
+> **Tujuan:** user mengetik prompt (mis. "Buat landing page SaaS HR dengan hero gradasi biru") dan sistem menghasilkan/mengubah dokumen builder **hanya memakai komponen (blok) milik kita**. Output LLM bukan HTML bebas, melainkan **JSON dokumen builder** yang divalidasi `parseDocument`, sehingga aman dan tetap bisa diedit di editor.
+>
+> **Keputusan teknis (final):**
+> - Protokol: **OpenAI-compatible Chat Completions** (`POST {baseUrl}/chat/completions`). Berlaku untuk OpenAI, OpenRouter, Groq, DeepSeek, Ollama (`/v1`), LM Studio, dll. Tidak memakai SDK; cukup `fetch`.
+> - Kredensial disimpan **per user** di database, **dienkripsi AES-256-GCM** (reversible) dengan kunci dari env `ENCRYPTION_KEY`. Kunci API **tidak pernah** dikirim kembali ke browser (hanya `••••` + 4 karakter terakhir).
+> - Panggilan LLM **hanya dari server** (Server Action / Route Handler), tidak pernah dari client.
+> - Tidak ada library baru (pakai `node:crypto` dan `fetch`). Dependency whitelist tidak berubah.
+
+### Task 7.1: Variabel lingkungan & modul enkripsi
+- Tambah ke `.env.example` dan `lib/env.ts`: `ENCRYPTION_KEY` (wajib, 32 byte dalam base64; contoh pembuatan: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`), `AI_REQUEST_TIMEOUT_MS` (default `60000`), `AI_MAX_PROMPT_CHARS` (default `4000`), `AI_RATE_LIMIT_PER_HOUR` (default `30`).
+- Validasi `ENCRYPTION_KEY`: base64 yang ter-decode tepat 32 byte; gagal → throw dengan pesan jelas saat start. Jangan pernah log nilainya.
+- Buat `server/crypto/secret-box.ts` (`import "server-only"`): `encryptSecret(plain): string` dan `decryptSecret(payload): string`.
+  - Algoritma `aes-256-gcm`, IV acak 12 byte per enkripsi, auth tag 16 byte.
+  - Format payload tersimpan: `v1:<iv_b64>:<tag_b64>:<cipher_b64>` (prefix versi untuk rotasi kunci kelak).
+  - `decryptSecret` melempar `AppError("INTERNAL", ...)` generik bila payload rusak/kunci salah (jangan bocorkan detail).
+- Unit test: enkripsi→dekripsi menghasilkan teks awal; dua enkripsi plaintext sama menghasilkan payload berbeda (IV acak); payload dimodifikasi 1 byte → gagal; kunci berbeda → gagal; format tidak dikenal → gagal.
+- **Selesai jika:** `npm test` memuat test crypto yang hijau dan aplikasi menolak start tanpa `ENCRYPTION_KEY` valid.
+
+### Task 7.2: Skema database konfigurasi AI
+- Tambah model Prisma `AiProvider` (tabel `ai_providers`), UUID PK:
+  - `id`, `userId` (FK `users`, `onDelete: Cascade`), `name` (VarChar 80), `baseUrl` (VarChar 300), `apiKeyEncrypted` (Text), `apiKeyLast4` (VarChar 4), `model` (VarChar 120), `temperature` (Float, default `0.7`), `maxTokens` (Int, default `4096`), `isDefault` (Boolean, default `false`), `createdAt`, `updatedAt`.
+  - Index: `@@index([userId])`; **partial unique index** (SQL manual di migration) `ai_providers_user_default_key` pada `(user_id) WHERE is_default = true` agar hanya satu default per user; unique `(user_id, lower(name))`.
+  - CHECK constraint: `temperature BETWEEN 0 AND 2`, `max_tokens BETWEEN 256 AND 32000`.
+- Tambah model `AiGeneration` (tabel `ai_generations`) untuk riwayat & rate limit: `id`, `userId` (FK cascade), `pageId` (FK `pages`, `onDelete: SetNull`, nullable), `providerId` (FK `ai_providers`, `onDelete: SetNull`, nullable), `mode` (enum `AiMode`: `GENERATE`, `MODIFY`), `prompt` (Text, dipotong 4000), `status` (enum `AiStatus`: `SUCCESS`, `FAILED`), `errorCode` (VarChar 40, nullable), `promptTokens`, `completionTokens` (Int, nullable), `durationMs` (Int), `createdAt`. Index `(user_id, created_at DESC)`.
+- **Jangan** menyimpan respons LLM mentah atau API key di `ai_generations`.
+- Buat migration baru (`prisma migrate dev --create-only` lalu tambahkan SQL manual untuk partial unique index + CHECK). Jalankan dengan `PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING=1` bila perlu (lihat README).
+- **Selesai jika:** `prisma migrate dev` sukses, `\d ai_providers` menampilkan index/constraint di atas, dan `prisma validate` lolos.
+
+### Task 7.3: Repository & service konfigurasi provider
+- `server/repositories/ai-provider-repository.ts` (satu-satunya tempat akses Prisma): `listByUser`, `findOwned({ id, userId })`, `findDefault(userId)`, `create`, `update`, `delete`, `clearDefault(tx, userId)`, `countByUser`. **Select eksplisit tanpa `apiKeyEncrypted`** kecuali fungsi khusus `findOwnedWithSecret` yang hanya dipakai service generate.
+- `server/services/ai-provider-service.ts`:
+  - `createProvider`: enkripsi key, simpan `apiKeyLast4`, maksimal **5 provider per user**, provider pertama otomatis default.
+  - `updateProvider`: key **opsional** — kosong berarti pertahankan key lama; terisi berarti enkripsi ulang.
+  - `setDefaultProvider`: dalam `$transaction` (clearDefault lalu set).
+  - `deleteProvider`: jika yang dihapus default, jadikan provider tertua yang tersisa sebagai default.
+  - `toPublicProvider(row)`: mengembalikan `{ id, name, baseUrl, model, temperature, maxTokens, isDefault, keyHint: "••••" + last4 }` — **tidak pernah** menyertakan key/ciphertext.
+- Validasi `baseUrl` (Zod + util `assertSafeBaseUrl`): wajib `https://` **atau** `http://localhost`/`http://127.0.0.1` untuk model lokal (Ollama/LM Studio); hapus trailing slash; tolak user:pass di URL, query, fragment; tolak host privat/metadata di produksi (`169.254.169.254`, `10.*`, `172.16–31.*`, `192.168.*`, `::1` kecuali ketika `NODE_ENV !== "production"` dan host `localhost`/`127.0.0.1`) untuk mencegah SSRF.
+- Semua query memfilter `userId`; data milik user lain → `NOT_FOUND`.
+- **Selesai jika:** CRUD provider bekerja lewat service, key tidak pernah muncul pada objek yang dikembalikan, dan percobaan SSRF (`http://169.254.169.254`) ditolak.
+
+### Task 7.4: Server Actions konfigurasi provider
+- `features/ai/schemas.ts` (Zod): `name` 1–80, `baseUrl` (aturan 7.3), `apiKey` (create: wajib min 8 maks 500, tanpa spasi; update: opsional), `model` 1–120, `temperature` 0–2, `maxTokens` 256–32000.
+- `features/ai/actions.ts` (`"use server"`, semua memanggil `requireUser()` di baris pertama): `listProvidersAction`, `saveProviderAction` (create/update), `deleteProviderAction`, `setDefaultProviderAction`, `testProviderAction`.
+- `testProviderAction`: kirim chat completion kecil (`"Balas hanya dengan: ok"`, `max_tokens: 5`) ke provider; kembalikan `{ ok, latencyMs, message }` dengan pesan error yang ramah (401 → "API key ditolak", 404 → "Base URL/model tidak ditemukan", timeout, DNS gagal). **Jangan** menyertakan body respons mentah.
+- Rate limit tes koneksi: maks 10/jam/user (hitung dari `ai_generations` mode khusus atau counter ringan) agar tidak dipakai sebagai proxy.
+- **Selesai jika:** semua action mengembalikan `ActionResult`, key tidak pernah ada di respons, dan error validasi tampil per field.
+
+### Task 7.5: Klien Chat Completions (server-only)
+- `server/ai/chat-client.ts`: `callChatCompletion({ baseUrl, apiKey, model, messages, temperature, maxTokens, signal })` memakai `fetch` ke `${baseUrl}/chat/completions`.
+  - Header: `Authorization: Bearer <key>`, `Content-Type: application/json`. Body: `model`, `messages`, `temperature`, `max_tokens`, `stream: false`.
+  - Coba `response_format: { type: "json_object" }`; bila provider membalas 400 yang menyebut `response_format`, **ulangi sekali tanpa** parameter itu.
+  - Timeout via `AbortController` (`AI_REQUEST_TIMEOUT_MS`); redirect `manual` (tolak redirect ke host lain).
+  - Batasi ukuran respons (maks 1 MB) dan baca `choices[0].message.content`; validasi bentuk respons dengan Zod.
+  - Petakan error: 401/403 → `AppError("VALIDATION","API key ditolak provider.")`; 404 → "Model atau Base URL tidak ditemukan."; 429 → `RATE_LIMITED` "Provider membatasi permintaan."; 5xx/timeout/jaringan → `INTERNAL` pesan ramah. **Jangan pernah** me-log atau meneruskan API key, header Authorization, atau body respons mentah.
+- Unit test dengan `fetch` di-mock: sukses, 401, 404, 429, timeout, respons bukan JSON, `choices` kosong, retry tanpa `response_format`.
+- **Selesai jika:** semua skenario test lolos dan tidak ada log yang memuat key.
+
+### Task 7.6: Katalog komponen untuk prompt (machine-readable)
+- `features/ai/lib/component-catalog.ts`: bangkitkan **otomatis dari registry** (`BLOCK_DEFINITIONS`, `STYLE_KEYS`, aturan `isAllowedChild`) sehingga katalog selalu sinkron dengan komponen yang ada. Isi per blok: `type`, deskripsi, `isContainer`, anak yang diizinkan, daftar props + tipe + nilai enum, dan style default.
+- Sertakan aturan global: whitelist `STYLE_KEYS`, aturan `backgroundImage` (hanya gradient), URL hanya `https`/`mailto`/`tel`/`#`/`/`, `column` hanya di dalam `columns`, `columns` hanya berisi `column`, maks 500 blok, kedalaman 12, `fonts` maks 3 dengan URL font `https` berakhiran woff2/woff/ttf/otf.
+- Fungsi `renderCatalogForPrompt(): string` menghasilkan teks ringkas (hemat token) dan `getCatalogVersion(): string` (hash) untuk debugging.
+- Unit test: setiap `BlockType` ada di katalog; menambah blok baru di registry otomatis muncul; `STYLE_KEYS` lengkap.
+- **Selesai jika:** katalog mencakup 100% tipe blok dan test sinkronisasi hijau.
+
+### Task 7.7: Prompt engineering & format keluaran
+- `features/ai/lib/prompt-builder.ts`: susun `messages`:
+  - **system:** peran ("kamu adalah perancang halaman web yang HANYA boleh memakai komponen berikut"), katalog (7.6), aturan desain anti-slop (skala spasi 8px, hierarki tipografi, maks 2 warna aksen, gradient halus, overlay hero 35–55%, konten realistis bukan lorem ipsum, bahasa Indonesia kecuali diminta lain), serta **format keluaran wajib**: satu objek JSON dokumen builder valid (`version`, `rootId`, `blocks`, `fonts`, `meta`) tanpa teks pembuka/penutup dan tanpa markdown.
+  - **user (GENERATE):** prompt user apa adanya (dipotong `AI_MAX_PROMPT_CHARS`).
+  - **user (MODIFY):** prompt user + dokumen saat ini (diringkas bila > ~12k karakter) + instruksi "kembalikan dokumen LENGKAP hasil modifikasi, pertahankan id blok yang tidak berubah".
+- Perlakukan prompt user sebagai **data**, bukan instruksi sistem: pisahkan dengan delimiter jelas dan tambahkan instruksi sistem yang menolak perintah mengubah aturan/format/mengungkap prompt sistem.
+- Pilihan "gaya" opsional dari UI (Minimal, Bold, Elegan, Playful) disisipkan sebagai preferensi desain.
+- Unit test: prompt berisi katalog, memotong prompt panjang, MODIFY menyertakan dokumen, delimiter anti-injection ada.
+- **Selesai jika:** `buildMessages({ mode, prompt, document?, style? })` mengembalikan pesan valid dan teruji.
+
+### Task 7.8: Parsing, validasi, dan perbaikan keluaran LLM
+- `features/ai/lib/parse-output.ts`: ekstrak JSON dari respons (hapus code fence ```` ```json ````, ambil dari `{` pertama sampai `}` terakhir), `JSON.parse` aman, lalu `parseDocument`.
+- **Sanitasi sebelum validasi:** buang key `style` di luar whitelist, buang `backgroundImage` non-gradient, ganti URL tidak aman menjadi `#`/kosong, potong teks > 5000 karakter, batasi blok ke 500, pastikan `rootId` ada & bertipe `container`, regenerasi id duplikat/tidak valid dengan `nanoid(10)`, normalisasi `fonts` (buang yang URL-nya tidak valid), isi `meta.lang = "id"` bila kosong.
+- Bila validasi masih gagal → **satu kali percobaan perbaikan otomatis**: kirim ulang ke LLM dengan daftar error ringkas ("perbaiki dokumen ini; error: …") lalu validasi lagi. Bila tetap gagal → `AppError("VALIDATION","AI menghasilkan struktur yang tidak valid. Coba ubah prompt.")` tanpa menyimpan apa pun.
+- Hasil akhir **selalu** lewat `parseDocument` + `assertContentSize` sebelum dikembalikan.
+- Unit test: JSON dalam code fence, JSON dengan teks pengantar, style liar dibuang, URL `javascript:` dinetralkan, `column` salah tempat diperbaiki/ditolak, id duplikat diregenerasi, dokumen > 500 blok dipangkas.
+- **Selesai jika:** keluaran LLM yang kotor tetap menjadi dokumen valid, atau ditolak dengan pesan jelas; tidak pernah ada dokumen invalid yang tersimpan.
+
+### Task 7.9: Service & action generate/modify
+- `server/services/ai-generation-service.ts`: `generateDocument({ userId, pageId, mode, prompt, style?, providerId? })`:
+  1. `requireUser` + verifikasi kepemilikan page (`NOT_FOUND` bila bukan milik).
+  2. Pilih provider (`providerId` atau default); tidak ada → `AppError("VALIDATION","Atur provider AI terlebih dahulu.")`.
+  3. Rate limit: hitung `ai_generations` 1 jam terakhir per user (`AI_RATE_LIMIT_PER_HOUR`) → `RATE_LIMITED`.
+  4. Dekripsi key **tepat sebelum** panggilan, jangan simpan di variabel yang hidup lama, jangan di-log.
+  5. Bangun pesan (7.7) → panggil (7.5) → parse/sanitasi/perbaikan (7.8).
+  6. Catat `ai_generations` (status, durasi, token, errorCode) — sukses maupun gagal; prompt dipotong; **tanpa** respons mentah/key.
+  7. Kembalikan `{ document, usage }`. **Tidak** menimpa page otomatis (lihat 7.11: user mengonfirmasi dulu).
+- `features/ai/actions.ts`: `generateDocumentAction({ pageId, prompt, mode, style, providerId })` dengan Zod (`prompt` 3–`AI_MAX_PROMPT_CHARS`), mencegah double submit (satu permintaan aktif per user per page; sisi UI juga disable tombol).
+- Untuk mode `MODIFY`, snapshot `MANUAL` dibuat otomatis sebelum menerapkan hasil (lewat `createSnapshot`) agar bisa di-undo lewat Riwayat.
+- **Selesai jika:** generate sukses mengembalikan dokumen valid, gagal tercatat di `ai_generations`, rate limit bekerja, dan key tidak pernah muncul di log/respons.
+
+### Task 7.10: UI pengaturan provider AI
+- Halaman `/settings/ai` (grup `(app)`, wajib login) + link "AI" di navbar aplikasi. Mobile-first, bahasa Indonesia.
+- Daftar provider (kartu): nama, base URL, model, badge "Default", `keyHint` (••••1234). Aksi: Edit, Jadikan default, Hapus (konfirmasi), Tes koneksi (tampilkan latensi/pesan).
+- Dialog tambah/edit: field Nama, Base URL (hint "mis. https://api.openai.com/v1"), API Key (type `password`, `autocomplete="off"`, tombol tampilkan/sembunyikan; saat edit kosong = pertahankan key lama + tulisan "Tersimpan: ••••1234"), Model, Temperature (slider 0–2), Max tokens.
+- **Preset cepat** (hanya mengisi Base URL + contoh model): OpenAI, OpenRouter, Groq, DeepSeek, Ollama lokal, LM Studio lokal, Kustom.
+- Empty state: penjelasan singkat + tombol "Tambah provider".
+- Tidak pernah menampilkan key penuh setelah disimpan; field key dikosongkan setelah submit sukses.
+- **Selesai jika:** provider dapat dibuat/diubah/dihapus/dijadikan default/dites dari UI, key tidak pernah terlihat kembali, dan tampilan rapi di 360px dan 1280px.
+
+### Task 7.11: Panel prompt di editor
+- Tambah **panel "Asisten AI"** di editor (tab di inspector kanan atau panel bawah yang bisa disembunyikan; hormati toggle panel Task 6.1). Isi:
+  - Textarea prompt (placeholder contoh, penghitung karakter `n/AI_MAX_PROMPT_CHARS`), pilihan mode **"Buat baru"** (ganti seluruh halaman) / **"Ubah halaman ini"** (modifikasi dokumen saat ini), pilihan gaya, dan select provider (default terpilih; jika belum ada → tombol "Atur provider" ke `/settings/ai`).
+  - Tombol "Buat dengan AI" (loading + tombol Batalkan memakai `AbortController` di sisi client; server tetap menghormati timeout).
+  - Contoh prompt cepat (chip) agar user tahu kemampuan: "Landing page SaaS dengan hero gradasi biru", "Halaman portofolio fotografer dengan hero gambar", dll.
+- **Alur konfirmasi:** hasil tidak langsung menimpa. Tampilkan dialog **pratinjau** (render `renderHtml` di `<iframe sandbox="">`) dengan tombol "Terapkan" / "Buang". Saat "Terapkan": mode MODIFY → buat snapshot `MANUAL` dulu; ganti dokumen via `replaceDocument`-setara yang masuk history undo (agar `Ctrl+Z` mengembalikan), tandai `dirty` sehingga autosave berjalan.
+- Tampilkan error ramah per kode (`RATE_LIMITED`, API key ditolak, provider belum diatur, struktur tidak valid, timeout) dengan saran tindakan.
+- Aksesibilitas: label jelas, status loading via `aria-live`, fokus kembali ke textarea setelah selesai.
+- **Selesai jika:** user menulis prompt, melihat pratinjau, menerapkan, dan hasilnya muncul di kanvas hanya dengan blok kita, dapat di-undo, dan tersimpan oleh autosave.
+
+### Task 7.12: Riwayat & transparansi penggunaan
+- Di panel AI tampilkan "Riwayat" ringkas (10 terakhir): waktu, mode, status, durasi, token (bila ada), prompt terpotong. Hanya milik user sendiri.
+- Tombol "Pakai prompt ini lagi" mengisi textarea.
+- Admin: halaman `/admin/ai` read-only berisi agregat penggunaan (jumlah generate per hari, sukses/gagal) **tanpa** prompt/identitas sensitif. (Opsional bila waktu terbatas — boleh ditunda, catat sebagai debt.)
+- **Selesai jika:** riwayat tampil benar, tidak membocorkan data user lain, dan tidak memuat key/respons mentah.
+
+### Task 7.13: Keamanan & edge case khusus AI
+Wajib diverifikasi (tulis test atau checklist manual untuk tiap butir):
+- **Kerahasiaan key:** tidak ada key di respons Server Action, di HTML/RSC payload, di log server, di `ai_generations`, atau di pesan error. Cek dengan `grep` pada `console.error` yang menyertakan objek provider.
+- **Enkripsi:** data di tabel `ai_providers.api_key_encrypted` berformat `v1:…`; mengubah `ENCRYPTION_KEY` membuat dekripsi gagal dengan pesan generik dan UI meminta user memasukkan key ulang.
+- **SSRF:** validasi `baseUrl` saat simpan **dan** saat setiap panggilan (jangan percaya data DB); tolak redirect; tolak IP privat/metadata di produksi.
+- **Prompt injection:** keluaran selalu diparse sebagai data & divalidasi ketat; tidak ada eval, tidak ada HTML mentah; URL/style disanitasi ulang (lapis kedua di 7.8).
+- **Double submission:** satu request aktif per user+page; tombol disabled; permintaan kedua → pesan "Permintaan sedang diproses".
+- **Konflik revisi:** bila halaman berubah (revision naik) saat AI berjalan, tampilkan peringatan saat "Terapkan" dan minta konfirmasi.
+- **Biaya/abuse:** `AI_RATE_LIMIT_PER_HOUR`, batas panjang prompt, batas `maxTokens` per provider, batas ukuran dokumen sebagai konteks MODIFY.
+- **Timeout & pembatalan:** timeout server + tombol Batalkan; tidak ada dokumen setengah jadi tersimpan.
+- **Privasi:** dokumen user hanya dikirim ke provider yang dikonfigurasi user itu sendiri; tambahkan teks di UI: "Konten halaman Anda dikirim ke provider AI yang Anda pilih."
+- **Selesai jika:** semua butir tercentang dan terdokumentasi di `docs/05-edge-cases-security.md` (tambahkan bagian "AI Provider").
+
+### Task 7.14: Test & verifikasi akhir Fase 7
+- Unit test: crypto (7.1), validasi baseUrl/SSRF (7.3), chat client dengan fetch mock (7.5), katalog (7.6), prompt builder (7.7), parser/sanitizer (7.8), serta `toPublicProvider` tidak membocorkan key.
+- Uji integrasi manual memakai server OpenAI-compatible tiruan lokal (skrip kecil Node yang membalas `choices[0].message.content` berisi JSON dokumen valid) untuk memverifikasi alur end-to-end: simpan provider → tes koneksi → generate → pratinjau → terapkan → autosave → export HTML tanpa `<script`.
+- Perbarui `README.md`: cara membuat `ENCRYPTION_KEY`, cara menambah provider, contoh Base URL (OpenAI, OpenRouter, Ollama), dan peringatan keamanan.
+- **Selesai jika:** `npm run typecheck && npm run lint && npm test && npm run build` hijau dan alur end-to-end terverifikasi dengan server tiruan.
+
+---
+
 ## Ringkasan Definisi Selesai (Definition of Done) MVP
 
 1. User dapat register, login, logout.
