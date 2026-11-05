@@ -82,3 +82,36 @@ export async function updateUserRole(userId: string, role: Role): Promise<void> 
 export async function updateUserActive(userId: string, isActive: boolean): Promise<void> {
   await db.user.update({ where: { id: userId }, data: { isActive } });
 }
+
+export async function updateUserRoleGuarded(input: {
+  userId: string;
+  role: Role;
+}): Promise<"ok" | "last-admin"> {
+  return db.$transaction(async (tx) => {
+    const remainingAdmins = await tx.user.count({
+      where: { role: "ADMIN", isActive: true, id: { not: input.userId } },
+    });
+    if (remainingAdmins === 0) return "last-admin";
+
+    await tx.user.update({ where: { id: input.userId }, data: { role: input.role } });
+    return "ok";
+  });
+}
+
+export async function updateUserActiveGuarded(input: {
+  userId: string;
+  isActive: boolean;
+  requireRemainingAdmin: boolean;
+}): Promise<"ok" | "last-admin"> {
+  return db.$transaction(async (tx) => {
+    if (input.requireRemainingAdmin) {
+      const remainingAdmins = await tx.user.count({
+        where: { role: "ADMIN", isActive: true, id: { not: input.userId } },
+      });
+      if (remainingAdmins === 0) return "last-admin";
+    }
+
+    await tx.user.update({ where: { id: input.userId }, data: { isActive: input.isActive } });
+    return "ok";
+  });
+}
