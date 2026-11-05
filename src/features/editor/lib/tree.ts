@@ -3,7 +3,7 @@ import { isContainerType, type Block, type BlockType, type BuilderDocument } fro
 export function isAllowedChild(parentType: BlockType, childType: BlockType): boolean {
   if (!isContainerType(parentType)) return false;
   if (childType === "column") return parentType === "columns";
-  if (parentType === "columns") return childType === "column";
+  if (parentType === "columns") return false;
   if (parentType === "column") return childType !== "columns";
   return true;
 }
