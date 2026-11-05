@@ -10,6 +10,7 @@ Aplikasi web untuk membuat halaman HTML dengan **drag & drop**, menyimpannya di 
 4. Jika ada konflik antar dokumen, prioritasnya: `04-architecture-rules.md` > `02-database-design.md` > `01-prd.md` > `03-task-list.md`.
 5. Jangan menambah fitur di luar PRD. Jangan menambah library di luar daftar "Dependency Whitelist" tanpa alasan tertulis.
 6. Tulis kode tanpa komentar, kecuali logika yang tidak self-evident.
+7. Buatkan commit setelah eksekusi task namun jangan pernah menggunakan CO Auth pada commitan
 
 ## Daftar File
 
