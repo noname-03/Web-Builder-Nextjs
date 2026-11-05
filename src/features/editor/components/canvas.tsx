@@ -6,6 +6,7 @@ import { clsx } from "clsx";
 import { Fragment } from "react";
 import { BlockContent } from "@/features/editor/blocks/block-content";
 import { BLOCK_DEFINITIONS } from "@/features/editor/blocks/registry";
+import { renderFontFaceCss } from "@/features/export/font-css";
 import { findParentId } from "@/features/editor/lib/tree";
 import { isContainerType } from "@/features/editor/schemas/document";
 import { useEditor } from "@/features/editor/store/editor-context";
@@ -21,12 +22,18 @@ export function Canvas() {
   const document = useEditor((state) => state.document);
   const viewport = useEditor((state) => state.viewport);
   const selectBlock = useEditor((state) => state.selectBlock);
+  const defaultFont = document.meta.fontFamily;
 
   return (
     <div className="flex-1 overflow-auto bg-slate-100 p-4" onClick={() => selectBlock(null)}>
+      {document.fonts.length > 0 ? <style>{renderFontFaceCss(document.fonts)}</style> : null}
       <div
         className="mx-auto transition-[width] duration-200"
-        style={{ width: VIEWPORT_WIDTH[viewport], maxWidth: "100%" }}
+        style={{
+          width: VIEWPORT_WIDTH[viewport],
+          maxWidth: "100%",
+          fontFamily: defaultFont ? `"${defaultFont}", system-ui, sans-serif` : undefined,
+        }}
       >
         <div className="min-h-[60vh] rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
           <BlockNode id={document.rootId} />

@@ -1,7 +1,8 @@
 "use client";
 
 import type { CSSProperties } from "react";
-import type { Block } from "@/features/editor/schemas/document";
+import { backgroundCss } from "@/features/editor/lib/background";
+import { isSafeUrl, type Block } from "@/features/editor/schemas/document";
 
 function toCss(style: Block["style"]): CSSProperties {
   return style as CSSProperties;
@@ -18,7 +19,7 @@ export function BlockContent({ block, children }: { block: Block; children?: Rea
   switch (block.type) {
     case "section":
       return (
-        <section style={style} className="min-h-10">
+        <section style={{ ...style, ...backgroundCss(props) }} className="min-h-10">
           {children}
         </section>
       );
@@ -85,13 +86,32 @@ export function BlockContent({ block, children }: { block: Block; children?: Rea
       return <hr style={style} />;
     case "spacer":
       return <div style={{ ...style, height: safeText(props.height) || "32px" }} aria-hidden="true" />;
-    case "navbar":
+    case "navbar": {
+      const brandImageValue = typeof props.brandImage === "string" ? props.brandImage.trim() : "";
+      const brandImage =
+        props.brandType === "image" && brandImageValue !== "" && isSafeUrl(brandImageValue)
+          ? brandImageValue
+          : null;
+      const brandWidth =
+        typeof props.brandImageWidth === "string" && /^\d{1,4}(px|%|rem)$/.test(props.brandImageWidth)
+          ? props.brandImageWidth
+          : "auto";
+
       return (
         <header
           style={style}
           className="flex flex-wrap items-center justify-between gap-4 border-b border-slate-200"
         >
-          <span className="font-semibold">{safeText(props.brand)}</span>
+          {brandImage ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={brandImage}
+              alt={safeText(props.brandImageAlt ?? props.brand)}
+              style={{ width: brandWidth, height: "auto" }}
+            />
+          ) : (
+            <span className="font-semibold">{safeText(props.brand)}</span>
+          )}
           <nav className="flex flex-wrap gap-4 text-sm text-slate-600">
             {Array.isArray(props.items)
               ? props.items.map((item, index) => {
@@ -102,9 +122,10 @@ export function BlockContent({ block, children }: { block: Block; children?: Rea
           </nav>
         </header>
       );
+    }
     case "hero":
       return (
-        <section style={style}>
+        <section style={{ ...style, ...backgroundCss(props) }}>
           <h1 className="text-3xl font-bold">{safeText(props.title)}</h1>
           <p className="mt-2 text-slate-600">{safeText(props.subtitle)}</p>
           <span className="mt-4 inline-block rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white">

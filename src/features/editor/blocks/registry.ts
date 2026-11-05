@@ -16,6 +16,35 @@ export type BlockDefinition = {
   supportsNavbarItems?: boolean;
 };
 
+const BACKGROUND_FIELDS: PropField[] = [
+  { key: "backgroundImage", label: "Gambar latar (URL)", kind: "url", placeholder: "https://..." },
+  {
+    key: "backgroundSize",
+    label: "Ukuran latar",
+    kind: "select",
+    options: [
+      { value: "cover", label: "Cover" },
+      { value: "contain", label: "Contain" },
+      { value: "auto", label: "Auto" },
+    ],
+  },
+  {
+    key: "backgroundPosition",
+    label: "Posisi latar",
+    kind: "select",
+    options: [
+      { value: "center", label: "Center" },
+      { value: "top", label: "Top" },
+      { value: "bottom", label: "Bottom" },
+      { value: "left", label: "Left" },
+      { value: "right", label: "Right" },
+    ],
+  },
+  { key: "overlayColor", label: "Warna overlay", kind: "text", placeholder: "#000000" },
+  { key: "overlayOpacity", label: "Opacity overlay (0-100)", kind: "number" },
+  { key: "minHeight", label: "Tinggi minimum", kind: "text", placeholder: "320px" },
+];
+
 export const BLOCK_DEFINITIONS: Record<BlockType, BlockDefinition> = {
   section: {
     type: "section",
@@ -25,7 +54,7 @@ export const BLOCK_DEFINITIONS: Record<BlockType, BlockDefinition> = {
     isContainer: true,
     defaultProps: {},
     defaultStyle: { padding: "24px 0" },
-    fields: [],
+    fields: BACKGROUND_FIELDS,
   },
   container: {
     type: "container",
@@ -165,7 +194,21 @@ export const BLOCK_DEFINITIONS: Record<BlockType, BlockDefinition> = {
       ],
     },
     defaultStyle: { padding: "12px 0", borderBottom: "1px solid #e5e7eb" },
-    fields: [{ key: "brand", label: "Nama brand", kind: "text" }],
+    fields: [
+      { key: "brand", label: "Nama brand", kind: "text" },
+      {
+        key: "brandType",
+        label: "Tipe brand",
+        kind: "select",
+        options: [
+          { value: "text", label: "Teks" },
+          { value: "image", label: "Gambar" },
+        ],
+      },
+      { key: "brandImage", label: "URL logo", kind: "url", placeholder: "https://..." },
+      { key: "brandImageAlt", label: "Alt logo", kind: "text" },
+      { key: "brandImageWidth", label: "Lebar logo", kind: "text", placeholder: "120px" },
+    ],
     supportsNavbarItems: true,
   },
   hero: {
@@ -186,6 +229,7 @@ export const BLOCK_DEFINITIONS: Record<BlockType, BlockDefinition> = {
       { key: "subtitle", label: "Subjudul", kind: "text" },
       { key: "buttonText", label: "Teks tombol", kind: "text" },
       { key: "buttonHref", label: "URL tombol", kind: "url" },
+      ...BACKGROUND_FIELDS,
     ],
   },
   footer: {

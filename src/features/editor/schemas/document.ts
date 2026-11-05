@@ -46,6 +46,8 @@ export const STYLE_KEYS = [
   "minHeight",
   "lineHeight",
   "textDecoration",
+  "fontFamily",
+  "backgroundImage",
   "gap",
   "display",
   "flexDirection",
@@ -64,11 +66,22 @@ export type Block = {
   children: string[];
 };
 
+export const FONT_WEIGHTS = ["100", "200", "300", "400", "500", "600", "700", "800", "900"] as const;
+
+export type FontDefinition = {
+  id: string;
+  family: string;
+  url: string;
+  weight?: (typeof FONT_WEIGHTS)[number];
+  style?: "normal" | "italic";
+};
+
 export type BuilderDocument = {
   version: 1;
   rootId: string;
   blocks: Record<string, Block>;
-  meta: { title: string; description?: string; lang: string };
+  fonts: FontDefinition[];
+  meta: { title: string; description?: string; lang: string; fontFamily?: string };
 };
 
 export const MAX_BLOCKS = 500;
@@ -109,6 +122,41 @@ export function isSafeStyleValue(value: string): boolean {
   return STYLE_VALUE_PATTERN.test(value);
 }
 
+export function isSafeFontFamily(value: string): boolean {
+  if (value.length === 0 || value.length > 100) return false;
+  if (/url\(|expression\(|javascript:|["'<>{};\\/]/i.test(value)) return false;
+  return /^[A-Za-z0-9 ,-]+$/.test(value);
+}
+
+export function isSafeFontUrl(value: string): boolean {
+  if (!/^https:\/\/[^\s"'()\\]+$/i.test(value)) return false;
+  return /\.(woff2|woff|ttf|otf)(\?[^\s"'()\\]*)?$/i.test(value);
+}
+
+export function isSafeGradient(value: string): boolean {
+  if (value.length === 0 || value.length > 200) return false;
+  if (!/^(linear|radial|conic)-gradient\(/i.test(value)) return false;
+  if (!/^[a-zA-Z0-9#%.,\s()-]+$/.test(value)) return false;
+  if (/url\(|expression\(|javascript:|[@;{}<>"']/i.test(value)) return false;
+
+  let depth = 0;
+  for (const char of value) {
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (depth < 0) return false;
+  }
+  return depth === 0;
+}
+
+export function isSafeBackgroundUrl(value: string): boolean {
+  const trimmed = value.trim();
+  if (trimmed === "") return true;
+  if (/["'()\s\\]/.test(trimmed)) return false;
+  if (trimmed.startsWith("//")) return false;
+  if (trimmed.startsWith("/")) return true;
+  return /^https?:\/\//i.test(trimmed);
+}
+
 const styleSchema = z
   .record(z.string(), z.string())
   .superRefine((value, ctx) => {
@@ -117,7 +165,15 @@ const styleSchema = z
         ctx.addIssue({ code: "custom", message: `Style tidak dikenal: ${key}` });
         continue;
       }
-      if (!isSafeStyleValue(styleValue)) {
+
+      const valid =
+        key === "backgroundImage"
+          ? isSafeGradient(styleValue)
+          : key === "fontFamily"
+            ? isSafeFontFamily(styleValue)
+            : isSafeStyleValue(styleValue);
+
+      if (!valid) {
         ctx.addIssue({ code: "custom", message: `Nilai style tidak valid untuk ${key}` });
       }
     }
@@ -125,8 +181,37 @@ const styleSchema = z
 
 const navbarItemSchema = z.object({ label: textSchema.max(60), href: urlSchema }).strict();
 
+const backgroundPropsSchema = {
+  backgroundImage: z
+    .string()
+    .max(2048)
+    .refine((value) => isSafeBackgroundUrl(value), "URL gambar latar tidak diizinkan")
+    .optional(),
+  backgroundSize: z.enum(["cover", "contain", "auto"]).optional(),
+  backgroundPosition: z.enum(["center", "top", "bottom", "left", "right"]).optional(),
+  overlayColor: z
+    .string()
+    .regex(/^#[0-9a-fA-F]{6}$/, "Warna overlay harus format #rrggbb")
+    .optional(),
+  overlayOpacity: z.number().int().min(0).max(100).optional(),
+  minHeight: z
+    .string()
+    .regex(/^\d{1,4}(px|vh|rem)$/, "Tinggi minimal tidak valid")
+    .optional(),
+};
+
+const fontSchema = z
+  .object({
+    id: z.string().min(1).max(40).regex(/^[a-z0-9-]+$/, "ID font tidak valid"),
+    family: z.string().min(1).max(60).refine((value) => isSafeFontFamily(value), "Nama font tidak valid"),
+    url: z.string().max(2048).refine((value) => isSafeFontUrl(value), "URL font tidak valid"),
+    weight: z.enum(FONT_WEIGHTS).optional(),
+    style: z.enum(["normal", "italic"]).optional(),
+  })
+  .strict();
+
 const blockPropsSchemas: Record<BlockType, z.ZodType<Record<string, unknown>>> = {
-  section: z.object({}).strict(),
+  section: z.object(backgroundPropsSchema).strict(),
   container: z.object({ maxWidth: z.string().max(20).optional() }).strict(),
   columns: z.object({ columns: z.number().int().min(1).max(4), gap: z.string().max(20) }).strict(),
   column: z.object({}).strict(),
@@ -137,13 +222,26 @@ const blockPropsSchemas: Record<BlockType, z.ZodType<Record<string, unknown>>> =
   link: z.object({ text: textSchema.max(100), href: urlSchema }).strict(),
   divider: z.object({}).strict(),
   spacer: z.object({ height: z.string().max(20) }).strict(),
-  navbar: z.object({ brand: textSchema.max(60), items: z.array(navbarItemSchema).max(8) }).strict(),
+  navbar: z
+    .object({
+      brand: textSchema.max(60),
+      items: z.array(navbarItemSchema).max(8),
+      brandType: z.enum(["text", "image"]).optional(),
+      brandImage: urlSchema.optional(),
+      brandImageAlt: textSchema.max(200).optional(),
+      brandImageWidth: z
+        .string()
+        .regex(/^\d{1,4}(px|%|rem)$/, "Lebar logo tidak valid")
+        .optional(),
+    })
+    .strict(),
   hero: z
     .object({
       title: textSchema,
       subtitle: textSchema,
       buttonText: textSchema.max(60),
       buttonHref: urlSchema,
+      ...backgroundPropsSchema,
     })
     .strict(),
   footer: z.object({ text: textSchema }).strict(),
@@ -179,11 +277,17 @@ export const builderDocumentSchema = z
       (blocks) => Object.keys(blocks).length <= MAX_BLOCKS,
       `Maksimal ${MAX_BLOCKS} blok`,
     ),
+    fonts: z.array(fontSchema).max(3, "Maksimal 3 font per halaman").default([]),
     meta: z
       .object({
         title: z.string().max(200),
         description: z.string().max(500).optional(),
         lang: z.string().min(2).max(10),
+        fontFamily: z
+          .string()
+          .max(100)
+          .refine((value) => isSafeFontFamily(value), "Font default tidak valid")
+          .optional(),
       })
       .strict(),
   })
@@ -202,6 +306,7 @@ export function createEmptyDocument(title = "Halaman Baru"): BuilderDocument {
         children: [],
       },
     },
+    fonts: [],
     meta: { title, lang: "id" },
   };
 }

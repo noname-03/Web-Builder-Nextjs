@@ -9,9 +9,14 @@ import {
   removeBlockStyle,
   updateBlockProps,
   updateBlockStyle,
+  updateDocumentFonts,
   updateDocumentMeta,
 } from "@/features/editor/lib/tree";
-import type { BlockType, BuilderDocument } from "@/features/editor/schemas/document";
+import type {
+  BlockType,
+  BuilderDocument,
+  FontDefinition,
+} from "@/features/editor/schemas/document";
 
 export type Viewport = "desktop" | "tablet" | "mobile";
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
@@ -43,6 +48,7 @@ type EditorState = {
   updateStyle: (blockId: string, style: Record<string, string>) => void;
   clearStyle: (blockId: string, key: string) => void;
   updateMeta: (meta: Partial<BuilderDocument["meta"]>) => void;
+  setFonts: (fonts: FontDefinition[]) => void;
   undo: () => void;
   redo: () => void;
   markSaving: () => void;
@@ -125,6 +131,7 @@ export function createEditorStore(input: {
       updateStyle: (blockId, style) => applyMutation((doc) => updateBlockStyle(doc, blockId, style)),
       clearStyle: (blockId, key) => applyMutation((doc) => removeBlockStyle(doc, blockId, key)),
       updateMeta: (meta) => applyMutation((doc) => updateDocumentMeta(doc, meta)),
+      setFonts: (fonts) => applyMutation((doc) => updateDocumentFonts(doc, fonts)),
 
       undo: () => {
         const state = get();

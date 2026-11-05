@@ -1,4 +1,10 @@
-import { isContainerType, type Block, type BlockType, type BuilderDocument } from "@/features/editor/schemas/document";
+import {
+  isContainerType,
+  type Block,
+  type BlockType,
+  type BuilderDocument,
+  type FontDefinition,
+} from "@/features/editor/schemas/document";
 
 export function isAllowedChild(parentType: BlockType, childType: BlockType): boolean {
   if (!isContainerType(parentType)) return false;
@@ -221,4 +227,11 @@ export function updateDocumentMeta(
   meta: Partial<BuilderDocument["meta"]>,
 ): BuilderDocument {
   return { ...doc, meta: { ...doc.meta, ...meta } };
+}
+
+export function updateDocumentFonts(
+  doc: BuilderDocument,
+  fonts: FontDefinition[],
+): BuilderDocument {
+  return { ...doc, fonts };
 }
