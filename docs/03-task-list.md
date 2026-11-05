@@ -298,6 +298,62 @@ Buat test `vitest` minimal:
 
 ---
 
+## FASE 6: Editor Ergonomics & Template Quality
+
+> Status per 2026-11-05: hasil validasi ada di tiap task. Tidak ada perubahan tabel database.
+
+### Task 6.1: Sembunyikan/tampilkan panel kiri dan kanan
+**Validasi saat ini: BELUM ADA.** `Palette` dan `Inspector` masing-masing memakai `hidden … lg:block` tanpa state toggle; tidak ada tombol, shortcut, atau penyimpanan preferensi. Kanvas tidak pernah melebar.
+
+- Tambah state panel di store editor: `panels: { palette: boolean; inspector: boolean }` + aksi `togglePanel("palette" | "inspector")`.
+- Toolbar editor: dua tombol toggle berikon (`PanelLeft`, `PanelRight` dari `lucide-react`) dengan `aria-pressed` dan `title` ("Sembunyikan panel blok" / "Tampilkan panel blok"). Tombol selalu terlihat di desktop.
+- Shortcut: `[` untuk palette dan `]` untuk inspector (abaikan saat fokus di input/textarea/select). Tampilkan petunjuk di tooltip.
+- Preferensi disimpan di `localStorage` (`wb:editor-panels`) dan dipulihkan saat mount tanpa hydration mismatch (baca di `useState` initializer hanya jika `typeof window !== "undefined"`, atau di effect setelah mount).
+- Saat panel disembunyikan, kanvas melebar (`flex-1`) dengan transisi lebar 150–200ms; viewport Desktop/Tablet/Mobile tetap berfungsi.
+- Aksesibilitas: toggle dapat dijangkau keyboard, `aria-label` jelas, tidak ada layout shift pada editor mobile (editor tetap desktop-only).
+- **Selesai jika:** kedua panel bisa disembunyikan/ditampilkan independen, kanvas melebar, shortcut bekerja, preferensi bertahan setelah reload, dan `npm run typecheck && npm run lint` lolos.
+
+### Task 6.2: Perbanyak template berkualitas (anti-slop)
+**Validasi saat ini: ADA, TAPI MINIM.** Seed hanya berisi 3 template: "Landing Page Sederhana" (navbar + hero + 3 kolom + footer), "Portofolio" (teks saja, tanpa gambar), dan "Halaman Kosong". Belum satu pun memakai gradient, background image, font kustom, atau logo navbar yang baru tersedia.
+
+- Sediakan minimal **8 template** jadi, masing-masing dengan struktur dan gaya berbeda:
+  1. SaaS Landing (hero bergradasi, 3 fitur, CTA, footer)
+  2. Portfolio Minimal (foto + tipografi besar)
+  3. Agency/Kreatif (background image hero + overlay gelap)
+  4. Startup Launch (hero + logo strip + fitur + CTA)
+  5. Personal Blog (header artikel, daftar artikel)
+  6. Product Launch (hero produk + spesifikasi + CTA)
+  7. Event/Webinar (hero + jadwal + form kontak tampilan)
+  8. Restoran/Kafe (hero gambar, menu, jam buka)
+  9. Halaman Pricing (3 kolom paket, satu kolom ditonjolkan)
+  10. Halaman Kosong (tetap dipertahankan)
+- **Aturan desain (anti-slop):** gunakan skala spasi 8px (8/16/24/32/48/64), lebar konten maksimum 1120–1200px, hierarki tipografi jelas (H1 40–48px, H2 28–32px, body 16px), maksimal 2 warna aksen + 1 netral, gradient halus (mis. `linear-gradient(135deg,#0f172a,#1d4ed8)`), overlay gelap 35–55% untuk hero dengan background image, dan konten placeholder yang realistis (bukan "Lorem ipsum", bukan emoji sebagai ikon).
+- Gunakan fitur baru secara konsisten: `backgroundImage` + overlay pada section/hero, `backgroundImage` gradient pada style blok, `fontFamily`/`document.fonts` untuk font kustom, dan `brandType: "image"` pada navbar (logo via URL `https`).
+- Seed wajib idempotent: upsert berdasarkan nama; template lama dengan nama sama di-update (bukan diduplikasi). Template yang dihapus admin tidak boleh dibuat ulang otomatis — cukup update yang ada, buat yang belum ada.
+- Admin dapat mengedit/menonaktifkan template di `/admin/templates` (sudah ada).
+- **Selesai jika:** `npm run db:seed` dua kali tidak menggandakan data; seluruh template lolos `parseDocument`; preview/export tiap template tidak mengandung `<script>`; minimal 8 template aktif dan tampil di dialog "Page Baru".
+
+### Task 6.3: Perbaikan UI/UX yang sudah ada
+**Validasi saat ini: ADA beberapa celah** yang perlu dirapikan agar konsisten (bukan fitur baru).
+
+- **Color control:** input warna menampilkan hitam padahal nilai kosong. Ganti pola: swatch + tombol "Hapus", dan tampilkan placeholder "Tidak diatur" saat kosong. Berlaku untuk `color` dan `backgroundColor`.
+- **Inspector navbar:** field `brandImage`/`brandImageAlt`/`brandImageWidth` selalu tampil walau `brandType = "text"`. Tampilkan hanya saat `brandType = "image"`; sebaliknya sembunyikan field `brand` saat mode gambar.
+- **Font weight:** opsi 400–800 belum lengkap; sediakan 100–900 dan tampilkan label (Thin–Black).
+- **Tombol Simpan:** tetap aktif saat status `saved` (tidak melakukan apa-apa). Disable saat tidak ada perubahan; aktif saat `dirty`/`error`.
+- **Dashboard empty state:** tombol "Project Baru" muncul dua kali karena dua instance `CreateProjectDialog` (header + empty state). Cukup satu instance yang sama, atau pisahkan trigger.
+- **Template picker:** dialog "Page Baru" hanya menampilkan nama. Tambahkan deskripsi singkat (dan opsional preview thumbnail statis) agar user tahu bedanya.
+- **Konsistensi visual:** samakan radius (8px), padding kartu, ukuran judul, dan jarak antar-section di halaman marketing, dashboard, admin, dan editor. Pastikan target sentuh ≥44px di mobile.
+- **Copy & pesan:** samakan bahasa (Indonesia, kalimat pendek), hilangkan pesan teknis di UI, dan pastikan toast error memakai pesan yang dapat ditindaklanjuti.
+- **Aksesibilitas:** semua tombol ikon punya `aria-label`, dialog mengembalikan fokus, dan status autosave diumumkan lewat `aria-live`.
+- **Selesai jika:** seluruh butir di atas diperbaiki, tidak ada regresi pada alur register/login/dashboard/editor/export, dan `npm run typecheck && npm run lint && npm test && npm run build` hijau.
+
+### Task 6.4: Test & verifikasi Fase 6
+- Unit test: seed template (semua valid, minimal 8, tidak ada `<script>` di export), validasi gradient/background pada template, dan normalisasi preferensi panel (parse/serialize aman).
+- Verifikasi manual: toggle panel + shortcut + reload, seluruh template dapat dibuat menjadi page dan di-export tanpa error validasi.
+- **Selesai jika:** `npm test` hijau dan semua template lolos `renderHtml` tanpa `script`/`javascript:`.
+
+---
+
 ## Ringkasan Definisi Selesai (Definition of Done) MVP
 
 1. User dapat register, login, logout.
