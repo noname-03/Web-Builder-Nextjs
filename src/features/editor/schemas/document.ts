@@ -256,6 +256,14 @@ export function validateDocumentStructure(doc: BuilderDocument): string[] {
     if (key !== block.id) {
       errors.push(`ID blok ${block.id} tidak cocok dengan key ${key}.`);
     }
+
+    if (block.type === "column") {
+      const parentId = parentOf.get(block.id);
+      const parent = parentId ? blocks[parentId] : undefined;
+      if (!parent || parent.type !== "columns") {
+        errors.push("Blok column hanya boleh berada di dalam columns.");
+      }
+    }
   }
 
   if (computeDepth(doc) > MAX_DEPTH) {
