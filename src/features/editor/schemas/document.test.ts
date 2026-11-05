@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { BLOCK_DEFINITIONS } from "@/features/editor/blocks/registry";
 import {
   createEmptyDocument,
   parseDocument,
+  STYLE_KEYS,
   validateDocumentStructure,
   type BuilderDocument,
 } from "@/features/editor/schemas/document";
@@ -76,6 +78,31 @@ describe("builder document schema", () => {
     }
 
     expect(() => parseDocument(doc)).toThrow();
+  });
+
+  it("keeps every block default style inside the whitelist", () => {
+    for (const definition of Object.values(BLOCK_DEFINITIONS)) {
+      for (const key of Object.keys(definition.defaultStyle)) {
+        expect(STYLE_KEYS).toContain(key);
+      }
+    }
+  });
+
+  it("accepts navbar and footer default styles", () => {
+    for (const type of ["navbar", "hero", "footer", "spacer"] as const) {
+      const definition = BLOCK_DEFINITIONS[type];
+      const doc = createEmptyDocument("Test");
+      doc.blocks.b1 = {
+        id: "b1",
+        type,
+        props: structuredClone(definition.defaultProps),
+        style: { ...definition.defaultStyle },
+        children: [],
+      };
+      doc.blocks.root!.children = ["b1"];
+
+      expect(() => parseDocument(doc)).not.toThrow();
+    }
   });
 
   it("rejects documents deeper than 12 levels", () => {

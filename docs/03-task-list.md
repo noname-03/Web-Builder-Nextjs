@@ -190,6 +190,12 @@
 - **Perbaikan:** angkat `DndContext` + `DragOverlay` ke `features/editor/components/dnd-provider.tsx` yang membungkus palette, kanvas, dan inspector. Setiap blok kini menjadi droppable (drop di atas container = append ke container; drop di atas blok non-container = sisipkan sebelum blok; drop di celah = posisi presisi). Celah diperbesar menjadi 8px dan menyala saat hover. Grip drag (`⋮⋮`) pada tiap blok selalu terlihat agar blok dapat dipindah tanpa harus menebak area hover.
 - **Selesai jika:** blok bisa ditarik dari palette ke container kosong, dipindah antar container, diurutkan ulang, dan `column` hanya diterima di dalam `columns`.
 
+### Task 3.18: Sinkronisasi whitelist style dengan defaultStyle blok
+- **Masalah:** menyimpan halaman yang berisi `navbar`, `footer`, atau `spacer` gagal dengan pesan "Style tidak dikenal: borderBottom".
+- **Penyebab:** `defaultStyle` pada registry memakai properti yang tidak terdaftar di `STYLE_KEYS` (`borderTop`, `borderBottom`, `height`), sehingga validasi Zod menolak dokumen.
+- **Perbaikan:** tambahkan `borderTop`, `borderBottom`, `borderLeft`, `borderRight`, `height`, `lineHeight`, dan `textDecoration` ke `STYLE_KEYS`. Tambahkan unit test yang memastikan seluruh key `defaultStyle` di registry ada di whitelist. Error `VALIDATION` saat autosave kini ditampilkan sebagai toast, bukan gagal diam-diam.
+- **Selesai jika:** halaman berisi semua tipe blok dapat disimpan tanpa error validasi, dan `npm test` memuat test sinkronisasi whitelist.
+
 ---
 
 ## FASE 4: Integration & State

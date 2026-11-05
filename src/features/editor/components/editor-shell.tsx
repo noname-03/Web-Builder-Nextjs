@@ -117,6 +117,13 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
       return;
     }
 
+    if (result.error.code === "VALIDATION") {
+      const detail = Object.values(result.error.fieldErrors ?? {})[0]?.[0];
+      toast.error(detail ?? result.error.message);
+      store.getState().markError();
+      return;
+    }
+
     store.getState().markError();
 
     if (retryRef.current < 3) {
