@@ -242,7 +242,9 @@ Buat test `vitest` minimal:
 
 ## FASE 5: Enhancement Blok & Styling
 
-> Status per 2026-11-05: **keempat item di bawah belum ada** di implementasi saat ini. Tidak ada perubahan tabel database (semua disimpan di `Page.content` JSON); perubahan hanya di schema dokumen, registry blok, inspector, renderer kanvas, dan renderer export.
+> Status per 2026-11-05: **sudah diimplementasikan dan diverifikasi** (Task 5.1–5.5). Tidak ada perubahan tabel database (semua disimpan di `Page.content` JSON); perubahan hanya di schema dokumen, registry blok, inspector, renderer kanvas, dan renderer export.
+>
+> Catatan implementasi: font memakai URL (bukan upload), default `brandType` adalah teks sehingga dokumen lama tetap valid, dan `fonts` dinormalisasi menjadi `[]` untuk dokumen lama.
 
 ### Task 5.1: Navbar brand berupa gambar/logo
 **Validasi saat ini:** `navbar` hanya punya `props.brand` (teks) dan dirender sebagai `<span>` di kanvas maupun export. Tidak ada dukungan logo.
