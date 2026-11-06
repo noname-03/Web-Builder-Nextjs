@@ -635,6 +635,7 @@ type GenerateDocumentResult = {
 - **Perbaikan parser:** `extractJsonObject` menerima JSON langsung, code fence, teks pengantar, JSON string ganda, dan trailing comma; `unwrapDocumentCandidate` menerima wrapper `document`/`page`/`data`/`result`/`output`; `normalizeBlocksContainer` menerima `blocks` sebagai array atau top-level array, lalu menyambungkan blok tanpa parent ke root.
 - **Perbaikan siklus generate:** hingga 2 percobaan repair dengan pesan error spesifik, `finish_reason = "length"` menghasilkan pesan "Respons AI terpotong…" (bukan error struktur), dan kegagalan akhir memberi saran model/prompt.
 - **Test:** wrapper, array, double-encoded JSON, teks non-JSON, repair message, dan finish_reason length.
+- **Penanganan output terpotong:** `finish_reason = "length"` tidak langsung gagal; HTML parsial diselamatkan lewat konverter, lalu sistem mencoba ulang sekali dengan max tokens 2x (maks 32000). Jika masih gagal, pesan menyebut nilai max tokens saat ini dan saran menaikkannya di `/settings/ai`.
 - **Selesai jika:** semua test AI hijau dan provider OpenAI-compatible yang patuh JSON dapat menghasilkan dokumen valid tanpa error struktur.
 
 ---

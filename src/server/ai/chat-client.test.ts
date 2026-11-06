@@ -52,7 +52,7 @@ describe("chat completion client", () => {
     expect(String(fetchMock.mock.calls[1]?.[1]?.body)).not.toContain("response_format");
   });
 
-  it("reports truncated responses clearly", async () => {
+  it("returns truncated responses with their finish reason for salvage", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn().mockResolvedValue(
@@ -62,7 +62,10 @@ describe("chat completion client", () => {
       ),
     );
 
-    await expect(callChatCompletion(baseInput)).rejects.toThrow("terpotong");
+    const result = await callChatCompletion(baseInput);
+
+    expect(result.content).toBe('{"version":1');
+    expect(result.finishReason).toBe("length");
   });
 
   it("maps auth errors without leaking the key", async () => {

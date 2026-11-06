@@ -135,13 +135,6 @@ export async function callChatCompletion(input: ChatCompletionInput): Promise<Ch
 
   const finishReason = parsed.data.choices[0]?.finish_reason ?? undefined;
 
-  if (finishReason === "length") {
-    throw new AppError(
-      "VALIDATION",
-      "Respons AI terpotong karena batas token. Naikkan Max tokens provider atau minta halaman lebih ringkas.",
-    );
-  }
-
   return {
     content,
     finishReason,
