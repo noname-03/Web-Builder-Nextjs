@@ -30,6 +30,8 @@ export default async function EditorPage({ params }: { params: Promise<{ pageId:
         document: page.document,
         revision: page.revision,
         documentIsValid: page.documentIsValid,
+        isPublished: page.isPublished ?? false,
+        publicSlug: page.publicSlug ?? null,
       }}
     />
   );

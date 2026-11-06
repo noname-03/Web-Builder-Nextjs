@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { PanelLeft, PanelRight } from "lucide-react";
 import { toast } from "sonner";
 import { Canvas } from "@/features/editor/components/canvas";
 import { EditorDnd } from "@/features/editor/components/dnd-provider";
@@ -11,6 +12,7 @@ import {
 } from "@/features/editor/components/editor-dialogs";
 import { Inspector } from "@/features/editor/components/inspector";
 import { Palette } from "@/features/editor/components/palette";
+import { PublishDialog, type PublishState } from "@/features/editor/components/publish-dialog";
 import { Toolbar } from "@/features/editor/components/toolbar";
 import {
   createPageFromContentAction,
@@ -37,6 +39,8 @@ export type EditorInitialData = {
   document: BuilderDocument;
   revision: number;
   documentIsValid?: boolean;
+  isPublished?: boolean;
+  publicSlug?: string | null;
 };
 
 export function EditorShell({ initial }: { initial: EditorInitialData }) {
@@ -52,12 +56,24 @@ export function EditorShell({ initial }: { initial: EditorInitialData }) {
         revision: initial.revision,
       }}
     >
-      <EditorScreen documentIsValid={initial.documentIsValid ?? true} />
+      <EditorScreen
+        documentIsValid={initial.documentIsValid ?? true}
+        initialIsPublished={initial.isPublished ?? false}
+        initialPublicSlug={initial.publicSlug ?? null}
+      />
     </EditorStoreProvider>
   );
 }
 
-function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
+function EditorScreen({
+  documentIsValid,
+  initialIsPublished,
+  initialPublicSlug,
+}: {
+  documentIsValid: boolean;
+  initialIsPublished: boolean;
+  initialPublicSlug: string | null;
+}) {
   const store = useEditorStoreApi();
   const editorDocument = useEditor((state) => state.document);
   const saveStatus = useEditor((state) => state.saveStatus);
@@ -72,6 +88,13 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
   const [versions, setVersions] = useState<VersionItemData[]>([]);
   const [versionsLoading, setVersionsLoading] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [publishOpen, setPublishOpen] = useState(false);
+  const [publishInfo, setPublishInfo] = useState<PublishState>({
+    isPublished: initialIsPublished,
+    publicSlug: initialPublicSlug,
+  });
+
+  const togglePanel = useEditor((state) => state.togglePanel);
 
   const saveNowRef = useRef<() => Promise<void>>(async () => {});
   const savingRef = useRef(false);
@@ -347,6 +370,7 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
           onSave={() => void saveNowNow()}
           onPreview={() => void handlePreview()}
           onExport={() => void handleExport()}
+          onOpenPublish={() => setPublishOpen(true)}
           onOpenVersions={() => {
             setVersionsOpen(true);
             void refreshVersions();
@@ -355,10 +379,30 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
         />
 
         <EditorDnd>
-          <div className="flex flex-1 overflow-hidden">
+          <div className="relative flex flex-1 overflow-hidden">
             {panels.palette ? <Palette /> : null}
             <Canvas />
             {panels.inspector ? <Inspector /> : null}
+
+            {!panels.palette ? (
+              <RestorePanelButton
+                side="left"
+                testId="restore-palette"
+                label="Tampilkan panel blok"
+                shortcut="["
+                onClick={() => togglePanel("palette")}
+              />
+            ) : null}
+
+            {!panels.inspector ? (
+              <RestorePanelButton
+                side="right"
+                testId="restore-inspector"
+                label="Tampilkan panel properti"
+                shortcut="]"
+                onClick={() => togglePanel("inspector")}
+              />
+            ) : null}
           </div>
         </EditorDnd>
       </div>
@@ -373,6 +417,15 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
         onRestored={(nextDocument, revision) => {
           store.getState().replaceDocument(nextDocument as BuilderDocument, revision);
         }}
+      />
+
+      <PublishDialog
+        open={publishOpen}
+        onClose={() => setPublishOpen(false)}
+        pageId={pageId}
+        initialIsPublished={publishInfo.isPublished}
+        initialPublicSlug={publishInfo.publicSlug}
+        onPublishStateChange={(next) => setPublishInfo(next)}
       />
 
       <ConflictDialog
@@ -395,5 +448,38 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
         {title} {slug}
       </span>
     </>
+  );
+}
+
+function RestorePanelButton({
+  side,
+  testId,
+  label,
+  shortcut,
+  onClick,
+}: {
+  side: "left" | "right";
+  testId: string;
+  label: string;
+  shortcut: string;
+  onClick: () => void;
+}) {
+  const positionClass = side === "left" ? "left-3" : "right-3";
+
+  return (
+    <button
+      type="button"
+      data-testid={testId}
+      title={`${label} (${shortcut})`}
+      onClick={onClick}
+      className={`absolute top-1/2 z-20 inline-flex -translate-y-1/2 items-center gap-2 rounded-md bg-slate-900 px-3 py-2 text-xs font-semibold text-white shadow-lg ring-1 ring-black/10 transition-colors hover:bg-slate-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900 ${positionClass}`}
+    >
+      {side === "left" ? (
+        <PanelLeft className="size-4" aria-hidden="true" />
+      ) : (
+        <PanelRight className="size-4" aria-hidden="true" />
+      )}
+      <span>{label}</span>
+    </button>
   );
 }
