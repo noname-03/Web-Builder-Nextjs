@@ -6,9 +6,11 @@ import { requireUser } from "@/server/auth/guards";
 import {
   createProvider,
   deleteProvider,
+  listModelsForProvider,
   listProviders,
   setDefaultProvider,
   testProvider,
+  testProviderDraft,
   updateProvider,
 } from "@/server/services/ai-provider-service";
 import { generateDocument } from "@/server/services/ai-generation-service";
@@ -19,10 +21,17 @@ import {
 import {
   createProviderSchema,
   generateSchema,
+  modelsRequestSchema,
   providerIdSchema,
+  testProviderDraftSchema,
   updateProviderSchema,
 } from "@/features/ai/schemas";
-import type { AiProviderPublic, AiGenerationHistoryItem, GenerateDocumentResult } from "@/features/ai/types";
+import type {
+  AiProviderPublic,
+  AiGenerationHistoryItem,
+  GenerateDocumentResult,
+  ProviderModelOption,
+} from "@/features/ai/types";
 
 export async function listProvidersAction(): Promise<ActionResult<AiProviderPublic[]>> {
   try {
@@ -117,6 +126,43 @@ export async function testProviderAction(
     return { ok: true, data: result };
   } catch (error) {
     return toActionError<{ latencyMs: number }>(error, "testProviderAction");
+  }
+}
+
+export async function testProviderDraftAction(input: {
+  baseUrl: string;
+  apiKey?: string;
+  providerId?: string;
+  model: string;
+  temperature: number;
+  maxTokens: number;
+}): Promise<ActionResult<{ latencyMs: number }>> {
+  try {
+    const user = await requireUser();
+    const parsed = testProviderDraftSchema.safeParse(input);
+    if (!parsed.success) return invalid(parsed.error);
+
+    const result = await testProviderDraft({ userId: user.id, ...parsed.data });
+    return { ok: true, data: result };
+  } catch (error) {
+    return toActionError<{ latencyMs: number }>(error, "testProviderDraftAction");
+  }
+}
+
+export async function listProviderModelsAction(input: {
+  providerId?: string;
+  baseUrl?: string;
+  apiKey?: string;
+}): Promise<ActionResult<ProviderModelOption[]>> {
+  try {
+    const user = await requireUser();
+    const parsed = modelsRequestSchema.safeParse(input);
+    if (!parsed.success) return invalid(parsed.error);
+
+    const models = await listModelsForProvider({ userId: user.id, ...parsed.data });
+    return { ok: true, data: models };
+  } catch (error) {
+    return toActionError<ProviderModelOption[]>(error, "listProviderModelsAction");
   }
 }
 

@@ -61,3 +61,7 @@ export function assertSafeBaseUrl(raw: string): string {
 export function getCompletionUrl(baseUrl: string): string {
   return `${assertSafeBaseUrl(baseUrl)}/chat/completions`;
 }
+
+export function getModelsUrl(baseUrl: string): string {
+  return `${assertSafeBaseUrl(baseUrl)}/models`;
+}

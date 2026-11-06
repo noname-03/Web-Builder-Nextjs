@@ -42,6 +42,8 @@ export type AiGenerationHistoryItem = {
   createdAt: string;
 };
 
+export type ProviderModelOption = { id: string; label: string; ownedBy?: string };
+
 export type ProviderPreset = {
   id: string;
   label: string;

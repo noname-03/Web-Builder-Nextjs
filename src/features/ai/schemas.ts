@@ -33,6 +33,21 @@ export const updateProviderSchema = providerBaseSchema.extend({
 
 export const providerIdSchema = z.string().uuid("ID provider tidak valid.");
 
+export const testProviderDraftSchema = z.object({
+  baseUrl: baseUrlSchema,
+  apiKey: z.string().trim().max(500).optional(),
+  providerId: z.string().uuid().optional(),
+  model: z.string().trim().min(1, "Model wajib diisi.").max(120),
+  temperature: z.coerce.number().min(0).max(2),
+  maxTokens: z.coerce.number().int().min(256).max(32000),
+});
+
+export const modelsRequestSchema = z.object({
+  providerId: z.string().uuid().optional(),
+  baseUrl: z.string().trim().max(300).optional(),
+  apiKey: z.string().trim().max(500).optional(),
+});
+
 export const generateSchema = z.object({
   pageId: z.string().uuid(),
   prompt: z.string().trim().min(3, "Prompt minimal 3 karakter.").max(20000),

@@ -9,13 +9,15 @@ import { Dialog } from "@/components/ui/dialog";
 import { FormError, Input, Label } from "@/components/ui/input";
 import {
   deleteProviderAction,
+  listProviderModelsAction,
   listProvidersAction,
   saveProviderAction,
   setDefaultProviderAction,
   testProviderAction,
+  testProviderDraftAction,
 } from "@/features/ai/actions";
 import { PROVIDER_PRESETS } from "@/features/ai/constants";
-import type { AiProviderPublic } from "@/features/ai/types";
+import type { AiProviderPublic, ProviderModelOption } from "@/features/ai/types";
 
 type FormState = {
   name: string;
@@ -42,6 +44,11 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
   const [editing, setEditing] = useState<AiProviderPublic | null>(null);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
   const [pending, setPending] = useState(false);
+  const [checking, setChecking] = useState(false);
+  const [checkMessage, setCheckMessage] = useState<string | null>(null);
+  const [models, setModels] = useState<ProviderModelOption[]>([]);
+  const [modelsLoading, setModelsLoading] = useState(false);
+  const [modelsHint, setModelsHint] = useState<string | null>(null);
   const [error, setError] = useState<{ message: string; fields?: Record<string, string[]> } | null>(null);
 
   async function refresh() {
@@ -50,10 +57,17 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
     router.refresh();
   }
 
+  function resetDialogState() {
+    setError(null);
+    setCheckMessage(null);
+    setModels([]);
+    setModelsHint(null);
+  }
+
   function openCreate() {
     setEditing(null);
     setForm(EMPTY_FORM);
-    setError(null);
+    resetDialogState();
     setOpen(true);
   }
 
@@ -67,7 +81,7 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
       temperature: String(provider.temperature),
       maxTokens: String(provider.maxTokens),
     });
-    setError(null);
+    resetDialogState();
     setOpen(true);
   }
 
@@ -80,12 +94,80 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
       baseUrl: preset.baseUrl,
       model: preset.model,
     }));
+    setModels([]);
+    setModelsHint(null);
+    setCheckMessage(null);
+  }
+
+  function updateForm(patch: Partial<FormState>) {
+    setForm((current) => ({ ...current, ...patch }));
+    setCheckMessage(null);
+  }
+
+  async function handleLoadModels() {
+    if (!editing && (form.baseUrl.trim() === "" || form.apiKey.trim() === "")) {
+      toast.error("Isi Base URL dan API key dulu untuk memuat model.");
+      return;
+    }
+
+    setModelsLoading(true);
+    setModelsHint(null);
+
+    const response = await listProviderModelsAction({
+      providerId: editing?.id,
+      baseUrl: editing ? undefined : form.baseUrl,
+      apiKey: editing ? undefined : form.apiKey,
+    });
+
+    setModelsLoading(false);
+
+    if (!response.ok) {
+      setModelsHint(response.error.message);
+      return;
+    }
+
+    setModels(response.data);
+    if (response.data.length === 0) {
+      setModelsHint("Provider tidak mengembalikan model. Isi model secara manual.");
+      return;
+    }
+    toast.success(`${response.data.length} model ditemukan.`);
+  }
+
+  async function handleCheck(): Promise<number | null> {
+    setChecking(true);
+    setCheckMessage(null);
+
+    const response = await testProviderDraftAction({
+      baseUrl: form.baseUrl,
+      apiKey: editing ? form.apiKey || undefined : form.apiKey,
+      providerId: editing?.id,
+      model: form.model,
+      temperature: Number(form.temperature),
+      maxTokens: Number(form.maxTokens),
+    });
+
+    setChecking(false);
+
+    if (!response.ok) {
+      setError({ message: response.error.message, fields: response.error.fieldErrors });
+      return null;
+    }
+
+    setError(null);
+    setCheckMessage(`Koneksi berhasil (${response.data.latencyMs} ms).`);
+    return response.data.latencyMs;
   }
 
   async function handleSave(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setPending(true);
-    setError(null);
+
+    const latency = await handleCheck();
+    if (latency === null) {
+      setPending(false);
+      return;
+    }
 
     const payload = {
       name: form.name,
@@ -93,13 +175,12 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
       model: form.model,
       temperature: Number(form.temperature),
       maxTokens: Number(form.maxTokens),
-      ...(editing ? { providerId: editing.id } : { apiKey: form.apiKey }),
-      ...(editing && form.apiKey.trim() !== "" ? { apiKey: form.apiKey } : {}),
+      ...(editing
+        ? { providerId: editing.id, ...(form.apiKey.trim() !== "" ? { apiKey: form.apiKey } : {}) }
+        : { apiKey: form.apiKey }),
     };
 
-    const response = await saveProviderAction(
-      payload as Parameters<typeof saveProviderAction>[0],
-    );
+    const response = await saveProviderAction(payload as Parameters<typeof saveProviderAction>[0]);
     setPending(false);
 
     if (!response.ok) {
@@ -199,7 +280,7 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
         open={open}
         onClose={() => setOpen(false)}
         title={editing ? "Edit provider" : "Tambah provider"}
-        description="Kompatibel dengan endpoint /chat/completions."
+        description="Koneksi diuji sebelum konfigurasi disimpan."
       >
         {open ? (
           <form onSubmit={handleSave} className="space-y-3" noValidate>
@@ -228,7 +309,7 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
                 id="provider-name"
                 value={form.name}
                 maxLength={80}
-                onChange={(event) => setForm({ ...form, name: event.target.value })}
+                onChange={(event) => updateForm({ name: event.target.value })}
               />
               <FormError messages={error?.fields?.name} />
             </div>
@@ -239,7 +320,7 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
                 id="provider-base-url"
                 value={form.baseUrl}
                 placeholder="https://api.openai.com/v1"
-                onChange={(event) => setForm({ ...form, baseUrl: event.target.value })}
+                onChange={(event) => updateForm({ baseUrl: event.target.value })}
               />
               <FormError messages={error?.fields?.baseUrl} />
             </div>
@@ -252,7 +333,7 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
                 autoComplete="off"
                 value={form.apiKey}
                 placeholder={editing ? `Tersimpan: ${editing.keyHint}` : "sk-..."}
-                onChange={(event) => setForm({ ...form, apiKey: event.target.value })}
+                onChange={(event) => updateForm({ apiKey: event.target.value })}
               />
               <p className="mt-1 text-xs text-slate-500">
                 {editing ? "Kosongkan jika tidak ingin mengganti key." : "Key disimpan terenkripsi."}
@@ -261,13 +342,39 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
             </div>
 
             <div>
-              <Label htmlFor="provider-model">Model</Label>
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="provider-model">Model</Label>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  type="button"
+                  loading={modelsLoading}
+                  onClick={handleLoadModels}
+                >
+                  {modelsLoading ? "Memuat model..." : "Ambil daftar model"}
+                </Button>
+              </div>
               <Input
                 id="provider-model"
                 value={form.model}
-                placeholder="gpt-4o-mini"
-                onChange={(event) => setForm({ ...form, model: event.target.value })}
+                placeholder="gpt-4o-mini atau pilih dari daftar"
+                list="provider-model-options"
+                onChange={(event) => updateForm({ model: event.target.value })}
               />
+              <datalist id="provider-model-options">
+                {models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.ownedBy ? `${model.label} · ${model.ownedBy}` : model.label}
+                  </option>
+                ))}
+              </datalist>
+              {modelsHint ? (
+                <p className="mt-1 text-xs text-amber-700">{modelsHint}</p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-500">
+                  Daftar model opsional. Anda tetap dapat mengisi model secara manual.
+                </p>
+              )}
               <FormError messages={error?.fields?.model} />
             </div>
 
@@ -281,7 +388,7 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
                   max={2}
                   step={0.1}
                   value={form.temperature}
-                  onChange={(event) => setForm({ ...form, temperature: event.target.value })}
+                  onChange={(event) => updateForm({ temperature: event.target.value })}
                 />
               </div>
               <div>
@@ -292,10 +399,16 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
                   min={256}
                   max={32000}
                   value={form.maxTokens}
-                  onChange={(event) => setForm({ ...form, maxTokens: event.target.value })}
+                  onChange={(event) => updateForm({ maxTokens: event.target.value })}
                 />
               </div>
             </div>
+
+            {checkMessage ? (
+              <p className="rounded-md bg-emerald-50 px-3 py-2 text-sm text-emerald-800" aria-live="polite">
+                {checkMessage}
+              </p>
+            ) : null}
 
             {error ? (
               <p className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
@@ -307,8 +420,11 @@ export function ProvidersManager({ initialProviders }: { initialProviders: AiPro
               <Button type="button" variant="secondary" onClick={() => setOpen(false)}>
                 Batal
               </Button>
-              <Button type="submit" loading={pending}>
-                Simpan
+              <Button type="button" variant="secondary" loading={checking} onClick={() => void handleCheck()}>
+                Cek koneksi
+              </Button>
+              <Button type="submit" loading={pending || checking}>
+                Cek &amp; Simpan Provider
               </Button>
             </div>
           </form>
