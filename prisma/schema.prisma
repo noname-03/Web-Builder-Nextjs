@@ -34,7 +34,7 @@ enum AiStatus {
 }
 
 model User {
-  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   email        String   @unique @db.VarChar(255)
   name         String   @db.VarChar(100)
   passwordHash String   @map("password_hash") @db.VarChar(255)
@@ -56,7 +56,7 @@ model User {
 }
 
 model Session {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   tokenHash String   @unique @map("token_hash") @db.VarChar(64)
   expiresAt DateTime @map("expires_at") @db.Timestamptz(6)
@@ -72,7 +72,7 @@ model Session {
 }
 
 model LoginAttempt {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   email     String   @db.VarChar(255)
   ipAddress String   @map("ip_address") @db.VarChar(45)
   success   Boolean
@@ -83,7 +83,7 @@ model LoginAttempt {
 }
 
 model Project {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   userId      String    @map("user_id") @db.Uuid
   name        String    @db.VarChar(100)
   description String?   @db.VarChar(500)
@@ -99,7 +99,7 @@ model Project {
 }
 
 model Page {
-  id          String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String     @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   projectId   String     @map("project_id") @db.Uuid
   title       String     @db.VarChar(150)
   slug        String     @db.VarChar(100)
@@ -123,7 +123,7 @@ model Page {
 }
 
 model PageVersion {
-  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String        @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   pageId    String        @map("page_id") @db.Uuid
   content   Json          @db.JsonB
   revision  Int
@@ -137,7 +137,7 @@ model PageVersion {
 }
 
 model Template {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   name        String   @db.VarChar(100)
   description String?  @db.VarChar(300)
   content     Json     @db.JsonB
@@ -153,7 +153,7 @@ model Template {
 }
 
 model ExportLog {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   pageId    String   @map("page_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   revision  Int
@@ -169,7 +169,7 @@ model ExportLog {
 }
 
 model AiProvider {
-  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id              String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   userId          String   @map("user_id") @db.Uuid
   name            String   @db.VarChar(80)
   baseUrl         String   @map("base_url") @db.VarChar(300)
@@ -190,7 +190,7 @@ model AiProvider {
 }
 
 model AiGeneration {
-  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id               String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   userId           String   @map("user_id") @db.Uuid
   pageId           String?  @map("page_id") @db.Uuid
   providerId       String?  @map("provider_id") @db.Uuid

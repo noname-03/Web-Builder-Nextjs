@@ -1,6 +1,8 @@
 # 2. Database Design
 
-PostgreSQL 15+, Prisma 6. Semua ID adalah **UUID** (`@db.Uuid`, default `gen_random_uuid()`). Semua waktu `timestamptz`.
+PostgreSQL 15+, Prisma 6. Semua ID adalah **UUIDv7** (`@db.Uuid`, default `uuid_generate_v7()`), dibuat oleh fungsi PostgreSQL di migration `uuid_v7`. Semua waktu `timestamptz`.
+
+Mengapa UUIDv7: tetap bertipe `uuid` (FK tidak berubah), tetapi 48 bit pertama adalah timestamp milik sehingga insert baru **sortable** dan lebih ramah index dibanding UUIDv4. Baris lama (UUIDv4) tetap valid; hanya baris baru yang memakai v7.
 
 ## 2.1 Prisma Schema (siap pakai)
 
@@ -33,7 +35,7 @@ enum VersionSource {
 }
 
 model User {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id           String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   email        String    @unique @db.VarChar(255)
   name         String    @db.VarChar(100)
   passwordHash String    @map("password_hash") @db.VarChar(255)
@@ -53,7 +55,7 @@ model User {
 }
 
 model Session {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id         String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   userId     String   @map("user_id") @db.Uuid
   tokenHash  String   @unique @map("token_hash") @db.VarChar(64)
   expiresAt  DateTime @map("expires_at") @db.Timestamptz(6)
@@ -69,7 +71,7 @@ model Session {
 }
 
 model LoginAttempt {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   email     String   @db.VarChar(255)
   ipAddress String   @map("ip_address") @db.VarChar(45)
   success   Boolean
@@ -80,7 +82,7 @@ model LoginAttempt {
 }
 
 model Project {
-  id          String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String    @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   userId      String    @map("user_id") @db.Uuid
   name        String    @db.VarChar(100)
   description String?   @db.VarChar(500)
@@ -96,7 +98,7 @@ model Project {
 }
 
 model Page {
-  id        String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String     @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   projectId String     @map("project_id") @db.Uuid
   title     String     @db.VarChar(150)
   slug      String     @db.VarChar(100)
@@ -116,7 +118,7 @@ model Page {
 }
 
 model PageVersion {
-  id        String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String        @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   pageId    String        @map("page_id") @db.Uuid
   content   Json          @db.JsonB
   revision  Int
@@ -130,7 +132,7 @@ model PageVersion {
 }
 
 model Template {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id          String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   name        String   @db.VarChar(100)
   description String?  @db.VarChar(300)
   content     Json     @db.JsonB
@@ -146,7 +148,7 @@ model Template {
 }
 
 model ExportLog {
-  id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id        String   @id @default(dbgenerated("uuid_generate_v7()")) @db.Uuid
   pageId    String   @map("page_id") @db.Uuid
   userId    String   @map("user_id") @db.Uuid
   revision  Int
@@ -190,7 +192,7 @@ ALTER TABLE "pages"
   ADD CONSTRAINT "pages_revision_positive_chk" CHECK ("revision" >= 1);
 ```
 
-> `gen_random_uuid()` bawaan PostgreSQL 13+, tidak perlu ekstensi.
+> **UUIDv7:** default `uuid_generate_v7()` dibuat oleh fungsi PL/pgSQL di migration `20261106095350_uuid_v7` dan tidak memerlukan ekstensi. Fungsi menyusun 48-bit timestamp milidetik + 4-bit versi `7` + 62-bit acak, sehingga ID baru sortable dan tetap bertipe `uuid` (FK tidak berubah). Baris lama UUIDv4 tetap valid. Definisi fungsi ada di `prisma/migrations/20261106095350_uuid_v7/migration.sql`.
 
 ## 2.3 Ringkasan Relasi
 

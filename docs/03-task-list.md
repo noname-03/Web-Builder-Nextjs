@@ -799,6 +799,12 @@ type GenerateDocumentResult = {
   8. UI tetap dapat menyimpan dan memakai model manual jika endpoint tidak didukung.
 - **Selesai jika:** provider dapat mengambil daftar model secara aman, user tetap dapat memilih model manual, API key tidak pernah bocor, dan seluruh test model client/action/UI hijau.
 
+### Task 8.9: UUIDv7 untuk semua primary key
+- **Masalah:** ID memakai UUIDv4 acak dari `gen_random_uuid()`, tidak sortable dan kurang ramah index.
+- **Perbaikan:** tambah fungsi PostgreSQL `uuid_generate_v7()` (RFC 9562) via migration `uuid_v7`, lalu ubah default seluruh tabel (`users`, `sessions`, `login_attempts`, `projects`, `pages`, `page_versions`, `templates`, `export_logs`, `ai_providers`, `ai_generations`) menjadi `uuid_generate_v7()`.
+- Tipe kolom tetap `uuid`; FK, Prisma client, dan aplikasi tidak berubah. Baris lama tetap UUIDv4.
+- **Selesai jika:** `uuid_generate_v7()` menghasilkan version nibble `7`, urut berdasarkan waktu pada insert berurutan, dan insert baru via Prisma memakai default tersebut (diverifikasi lewat `RETURNING id`).
+
 ### Task 8.7: Final acceptance matrix untuk request ini
 
 | Fitur | Kasus | Expected |
