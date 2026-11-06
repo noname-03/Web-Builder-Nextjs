@@ -98,7 +98,7 @@ function decodeEntities(value: string): string {
   });
 }
 
-function collapseText(value: string): string {
+export function collapseText(value: string): string {
   return decodeEntities(value).replace(/\s+/g, " ").trim();
 }
 
@@ -270,7 +270,7 @@ function safeUrl(value: string | undefined): string {
   return isSafeUrl(value.trim()) ? value.trim() : "";
 }
 
-class DocumentBuilder {
+export class DocumentBuilder {
   private blocks: Record<string, Block> = {};
   private rootId: string;
   private count = 0;

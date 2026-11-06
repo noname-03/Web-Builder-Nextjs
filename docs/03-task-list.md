@@ -636,6 +636,7 @@ type GenerateDocumentResult = {
 - **Perbaikan siklus generate:** hingga 2 percobaan repair dengan pesan error spesifik, `finish_reason = "length"` menghasilkan pesan "Respons AI terpotong…" (bukan error struktur), dan kegagalan akhir memberi saran model/prompt.
 - **Test:** wrapper, array, double-encoded JSON, teks non-JSON, repair message, dan finish_reason length.
 - **Penanganan output terpotong:** `finish_reason = "length"` tidak langsung gagal; HTML parsial diselamatkan lewat konverter, lalu sistem mencoba ulang sekali dengan max tokens 2x (maks 32000). Jika masih gagal, pesan menyebut nilai max tokens saat ini dan saran menaikkannya di `/settings/ai`.
+- **Konversi menyeluruh:** `convertModelOutput` mencoba JSON → HTML → Markdown/teks terstruktur → teks biasa, lalu selalu menghasilkan dokumen blok valid. Refusal model dan output kosong dideteksi dengan pesan spesifik. Markdown heading/list/gambar/tautan/blockquote dipetakan ke blok; code fence dan script dibuang.
 - **Selesai jika:** semua test AI hijau dan provider OpenAI-compatible yang patuh JSON dapat menghasilkan dokumen valid tanpa error struktur.
 
 ---

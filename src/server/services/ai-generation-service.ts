@@ -7,8 +7,7 @@ import { normalizeDocument } from "@/features/editor/schemas/document";
 import type { AiMode, GenerateDocumentResult } from "@/features/ai/types";
 import { getCatalogVersion } from "@/features/ai/lib/component-catalog";
 import { buildMessages, buildRepairMessages, type PromptStyle } from "@/features/ai/lib/prompt-builder";
-import { parseAiOutput } from "@/features/ai/lib/parse-output";
-import { convertHtmlToDocument, looksLikeHtml } from "@/features/ai/lib/html-to-document";
+import { conversionWarning, convertModelOutput } from "@/features/ai/lib/content-to-document";
 import { logAiEvent } from "@/server/ai/ai-logger";
 import { callChatCompletion } from "@/server/ai/chat-client";
 import { findOwnedPage } from "@/server/repositories/page-repository";
@@ -73,47 +72,31 @@ export async function generateDocument(input: {
       maxTokens: provider.maxTokens,
     });
 
-    let parsed: ReturnType<typeof parseAiOutput> | null = null;
+    let parsed: ReturnType<typeof convertModelOutput>["document"] | null = null;
     let lastError: unknown = null;
     const warnings: string[] = [];
     const maxAttempts = 3;
     let tokensUpgraded = false;
-
-    const salvageHtml = (content: string, truncated: boolean): boolean => {
-      if (!looksLikeHtml(content)) return false;
-
-      try {
-        parsed = convertHtmlToDocument(content);
-        warnings.push(
-          truncated
-            ? "Respons AI terpotong saat mengirim HTML. Konten yang berhasil dibaca dikonversi ke komponen editor; periksa dan lengkapi bagian yang hilang."
-            : "Provider mengirim HTML, bukan JSON blok. Konten dikonversi otomatis ke komponen editor; periksa hasilnya sebelum diterapkan.",
-        );
-        return true;
-      } catch {
-        warnings.push("Provider mengirim HTML yang tidak dapat dikonversi ke komponen editor.");
-        return false;
-      }
-    };
-
-    if (completion.finishReason === "length") {
-      salvageHtml(completion.content, true);
-    }
+    const activeTokens = () => (tokensUpgraded ? Math.min(provider.maxTokens * 2, 32000) : provider.maxTokens);
 
     for (let attempt = 0; attempt < maxAttempts && !parsed; attempt++) {
       try {
-        parsed = parseAiOutput(completion.content);
+        const conversion = convertModelOutput(completion.content);
+        parsed = conversion.document;
+
+        const warning = conversionWarning(conversion.source, completion.finishReason === "length");
+        if (warning) warnings.push(warning);
         break;
       } catch (error) {
         lastError = error;
 
-        if (salvageHtml(completion.content, completion.finishReason === "length")) {
-          break;
+        if (isAppError(error) && error.message.includes("menolak")) {
+          throw error;
         }
 
         if (completion.finishReason === "length" && !tokensUpgraded) {
           tokensUpgraded = true;
-          const upgradedTokens = Math.min(provider.maxTokens * 2, 32000);
+          const upgradedTokens = activeTokens();
           warnings.push(`Output terpotong; mencoba ulang dengan max tokens ${upgradedTokens}.`);
 
           completion = await callChatCompletion({
@@ -124,10 +107,6 @@ export async function generateDocument(input: {
             temperature: provider.temperature,
             maxTokens: upgradedTokens,
           });
-
-          if (completion.finishReason === "length") {
-            salvageHtml(completion.content, true);
-          }
           continue;
         }
 
@@ -143,7 +122,7 @@ export async function generateDocument(input: {
           model: provider.model,
           messages: buildRepairMessages(messages, completion.content, errors),
           temperature: provider.temperature,
-          maxTokens: tokensUpgraded ? Math.min(provider.maxTokens * 2, 32000) : provider.maxTokens,
+          maxTokens: activeTokens(),
         });
       }
     }
