@@ -37,7 +37,39 @@ describe("ai output parsing", () => {
   });
 
   it("extractJsonObject rejects text without JSON", () => {
-    expect(() => extractJsonObject("tidak ada json")).toThrow();
+    expect(() => extractJsonObject("tidak ada json")).toThrow(/bukan JSON/);
+  });
+
+  it("unwraps documents nested under a wrapper key", () => {
+    const text = JSON.stringify({ document: rawDocument() });
+    const parsed = parseAiOutput(text);
+
+    expect(parsed.blocks.text1?.props.text).toBe("Halo dunia");
+  });
+
+  it("accepts a top-level array of blocks", () => {
+    const doc = rawDocument();
+    const blocks = Object.values(doc.blocks);
+    const parsed = parseAiOutput(JSON.stringify(blocks));
+
+    expect(parsed.blocks[parsed.rootId]?.type).toBe("container");
+    expect(Object.values(parsed.blocks).some((block) => block.type === "text")).toBe(true);
+  });
+
+  it("accepts blocks provided as an array inside the document", () => {
+    const doc = rawDocument();
+    const parsed = parseAiOutput(
+      JSON.stringify({ version: 1, blocks: Object.values(doc.blocks), meta: doc.meta }),
+    );
+
+    expect(parsed.blocks[parsed.rootId]?.type).toBe("container");
+  });
+
+  it("unwraps a double-encoded JSON string", () => {
+    const text = JSON.stringify(JSON.stringify(rawDocument()));
+    const parsed = parseAiOutput(text);
+
+    expect(parsed.blocks.text1?.props.text).toBe("Halo dunia");
   });
 
   it("drops unsafe style and sanitizes urls", () => {

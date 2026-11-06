@@ -9,7 +9,12 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 const completionResponseSchema = z.object({
   choices: z
-    .array(z.object({ message: z.object({ content: z.string().nullable().optional() }) }))
+    .array(
+      z.object({
+        message: z.object({ content: z.string().nullable().optional() }),
+        finish_reason: z.string().nullable().optional(),
+      }),
+    )
     .min(1),
   usage: z
     .object({
@@ -21,6 +26,7 @@ const completionResponseSchema = z.object({
 
 export type ChatCompletionResult = {
   content: string;
+  finishReason?: string;
   usage: { promptTokens?: number; completionTokens?: number };
 };
 
@@ -127,8 +133,18 @@ export async function callChatCompletion(input: ChatCompletionInput): Promise<Ch
     throw new AppError("INTERNAL", "Provider AI tidak mengembalikan konten.");
   }
 
+  const finishReason = parsed.data.choices[0]?.finish_reason ?? undefined;
+
+  if (finishReason === "length") {
+    throw new AppError(
+      "VALIDATION",
+      "Respons AI terpotong karena batas token. Naikkan Max tokens provider atau minta halaman lebih ringkas.",
+    );
+  }
+
   return {
     content,
+    finishReason,
     usage: {
       promptTokens: parsed.data.usage?.prompt_tokens,
       completionTokens: parsed.data.usage?.completion_tokens,

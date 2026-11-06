@@ -629,6 +629,14 @@ type GenerateDocumentResult = {
 
 - **Selesai jika:** seluruh matrix memiliki bukti test atau langkah reproduksi dan semua command CI hijau.
 
+### Task 7.28: Hardening kontrak keluaran AI (field error "struktur dokumen")
+- **Masalah:** provider tertentu mengembalikan format yang tidak sesuai (`blocks` array, dibungkus `document`, JSON string ganda, teks/markdown, atau JSON terpotong) sehingga muncul error "AI tidak mengembalikan struktur dokumen".
+- **Perbaikan prompt:** system prompt memuat contoh dokumen JSON valid, kontrak wajib (`blocks` object/map, rootId container, props/style/children wajib, tanpa wrapper/markdown), dan batas 60 blok. Pesan repair memuat skeleton JSON eksplisit.
+- **Perbaikan parser:** `extractJsonObject` menerima JSON langsung, code fence, teks pengantar, JSON string ganda, dan trailing comma; `unwrapDocumentCandidate` menerima wrapper `document`/`page`/`data`/`result`/`output`; `normalizeBlocksContainer` menerima `blocks` sebagai array atau top-level array, lalu menyambungkan blok tanpa parent ke root.
+- **Perbaikan siklus generate:** hingga 2 percobaan repair dengan pesan error spesifik, `finish_reason = "length"` menghasilkan pesan "Respons AI terpotong…" (bukan error struktur), dan kegagalan akhir memberi saran model/prompt.
+- **Test:** wrapper, array, double-encoded JSON, teks non-JSON, repair message, dan finish_reason length.
+- **Selesai jika:** semua test AI hijau dan provider OpenAI-compatible yang patuh JSON dapat menghasilkan dokumen valid tanpa error struktur.
+
 ---
 
 ## FASE 8: Product Polish, Provider Onboarding, Publish, dan Conversion UX

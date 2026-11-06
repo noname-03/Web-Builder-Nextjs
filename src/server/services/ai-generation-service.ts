@@ -8,6 +8,7 @@ import type { AiMode, GenerateDocumentResult } from "@/features/ai/types";
 import { getCatalogVersion } from "@/features/ai/lib/component-catalog";
 import { buildMessages, buildRepairMessages, type PromptStyle } from "@/features/ai/lib/prompt-builder";
 import { parseAiOutput } from "@/features/ai/lib/parse-output";
+import { convertHtmlToDocument, looksLikeHtml } from "@/features/ai/lib/html-to-document";
 import { logAiEvent } from "@/server/ai/ai-logger";
 import { callChatCompletion } from "@/server/ai/chat-client";
 import { findOwnedPage } from "@/server/repositories/page-repository";
@@ -72,22 +73,53 @@ export async function generateDocument(input: {
       maxTokens: provider.maxTokens,
     });
 
-    let parsed;
-    try {
-      parsed = parseAiOutput(completion.content);
-    } catch (firstError) {
-      const errors = isAppError(firstError)
-        ? [firstError.message, ...Object.values(firstError.fieldErrors ?? {}).flat()]
-        : ["struktur tidak valid"];
-      completion = await callChatCompletion({
-        baseUrl: provider.baseUrl,
-        apiKey,
-        model: provider.model,
-        messages: buildRepairMessages(messages, completion.content, errors),
-        temperature: provider.temperature,
-        maxTokens: provider.maxTokens,
-      });
-      parsed = parseAiOutput(completion.content);
+    let parsed: ReturnType<typeof parseAiOutput> | null = null;
+    let lastError: unknown = null;
+    const warnings: string[] = [];
+    const maxAttempts = 3;
+
+    for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      try {
+        parsed = parseAiOutput(completion.content);
+        break;
+      } catch (error) {
+        lastError = error;
+
+        if (looksLikeHtml(completion.content)) {
+          try {
+            parsed = convertHtmlToDocument(completion.content);
+            warnings.push(
+              "Provider mengirim HTML, bukan JSON blok. Konten dikonversi otomatis ke komponen editor; periksa hasilnya sebelum diterapkan.",
+            );
+            break;
+          } catch {
+            warnings.push("Provider mengirim HTML yang tidak dapat dikonversi ke komponen editor.");
+          }
+        }
+
+        if (attempt === maxAttempts - 1) break;
+
+        const errors = isAppError(error)
+          ? [error.message, ...Object.values(error.fieldErrors ?? {}).flat()]
+          : ["struktur tidak valid"];
+
+        completion = await callChatCompletion({
+          baseUrl: provider.baseUrl,
+          apiKey,
+          model: provider.model,
+          messages: buildRepairMessages(messages, completion.content, errors),
+          temperature: provider.temperature,
+          maxTokens: provider.maxTokens,
+        });
+      }
+    }
+
+    if (!parsed) {
+      const detail = isAppError(lastError) ? lastError.message : "struktur tidak valid";
+      throw new AppError(
+        "VALIDATION",
+        `AI belum mengembalikan format blok yang diminta. ${detail} Coba lagi atau gunakan model yang lebih patuh pada format JSON.`,
+      );
     }
 
     const durationMs = Date.now() - startedAt;
@@ -125,7 +157,7 @@ export async function generateDocument(input: {
         completionTokens: completion.usage.completionTokens,
         durationMs,
       },
-      warnings: [],
+      warnings,
       catalogVersion,
       baseRevision: page.revision,
     };

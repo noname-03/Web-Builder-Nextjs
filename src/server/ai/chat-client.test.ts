@@ -52,6 +52,19 @@ describe("chat completion client", () => {
     expect(String(fetchMock.mock.calls[1]?.[1]?.body)).not.toContain("response_format");
   });
 
+  it("reports truncated responses clearly", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn().mockResolvedValue(
+        jsonResponse(200, {
+          choices: [{ message: { content: '{"version":1' }, finish_reason: "length" }],
+        }),
+      ),
+    );
+
+    await expect(callChatCompletion(baseInput)).rejects.toThrow("terpotong");
+  });
+
   it("maps auth errors without leaking the key", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response("unauthorized", { status: 401 })));
 

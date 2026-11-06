@@ -264,6 +264,13 @@ export function AiPanel() {
                 className="h-full w-full"
               />
             </div>
+            {result.warnings.length > 0 ? (
+              <ul className="space-y-1 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                {result.warnings.map((warning) => (
+                  <li key={warning}>{warning}</li>
+                ))}
+              </ul>
+            ) : null}
             <p className="text-xs text-slate-500">
               {result.provider.name} · {result.provider.model} · {result.usage.durationMs} ms
             </p>

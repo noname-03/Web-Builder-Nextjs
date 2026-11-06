@@ -29,23 +29,91 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+function tryParseJson(value: string): { ok: true; data: unknown } | { ok: false } {
+  try {
+    return { ok: true, data: JSON.parse(value) };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function unwrapNestedJson(value: unknown): unknown {
+  if (typeof value !== "string") return value;
+  const nested = tryParseJson(value.trim());
+  return nested.ok ? unwrapNestedJson(nested.data) : value;
+}
+
 export function extractJsonObject(text: string): unknown {
   const withoutFences = text
     .replace(/```json\s*/gi, "")
     .replace(/```/g, "")
     .trim();
 
+  const direct = tryParseJson(withoutFences);
+  if (direct.ok) return unwrapNestedJson(direct.data);
+
   const start = withoutFences.indexOf("{");
   const end = withoutFences.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
-    throw new AppError("VALIDATION", "AI tidak mengembalikan JSON.");
+    throw new AppError(
+      "VALIDATION",
+      "AI mengembalikan teks, bukan JSON. Coba prompt yang lebih spesifik.",
+    );
   }
 
-  try {
-    return JSON.parse(withoutFences.slice(start, end + 1));
-  } catch {
-    throw new AppError("VALIDATION", "JSON dari AI tidak dapat dibaca.");
+  const sliced = withoutFences.slice(start, end + 1);
+  const parsed = tryParseJson(sliced);
+  if (parsed.ok) return unwrapNestedJson(parsed.data);
+
+  const repaired = tryParseJson(sliced.replace(/,\s*([}\]])/g, "$1"));
+  if (repaired.ok) return unwrapNestedJson(repaired.data);
+
+  throw new AppError("VALIDATION", "JSON dari AI tidak dapat dibaca (mungkin terpotong).");
+}
+
+const WRAPPER_KEYS = ["document", "page", "data", "result", "output"] as const;
+
+function unwrapDocumentCandidate(raw: unknown): Record<string, unknown> | null {
+  const candidate = unwrapNestedJson(raw);
+  if (Array.isArray(candidate)) return { blocks: candidate };
+  if (!isRecord(candidate)) return null;
+
+  for (const key of WRAPPER_KEYS) {
+    const nested = candidate[key];
+    if (!isRecord(nested)) continue;
+    if (isRecord(nested.blocks) || Array.isArray(nested.blocks)) return nested;
   }
+
+  return candidate;
+}
+
+function normalizeBlocksContainer(
+  candidate: Record<string, unknown> | null,
+): { blocks: Record<string, unknown>; rootId?: string } | null {
+  if (!candidate) return null;
+
+  const blocksValue = candidate.blocks;
+  const rootId = typeof candidate.rootId === "string" ? candidate.rootId : undefined;
+
+  if (isRecord(blocksValue)) {
+    return { blocks: blocksValue, rootId };
+  }
+
+  if (Array.isArray(blocksValue)) {
+    const blocks: Record<string, unknown> = {};
+    blocksValue.forEach((item, index) => {
+      if (!isRecord(item) || typeof item.type !== "string") return;
+      const id = typeof item.id === "string" && item.id !== "" ? item.id : `block-${index + 1}`;
+      blocks[id] = { ...item, id };
+    });
+    return { blocks, rootId };
+  }
+
+  if (Array.isArray(candidate)) {
+    return normalizeBlocksContainer({ blocks: candidate });
+  }
+
+  return null;
 }
 
 function wholeNumber(value: unknown): number | null {
@@ -167,15 +235,21 @@ function sanitizeFonts(value: unknown): FontDefinition[] {
 }
 
 export function sanitizeAiDocument(raw: unknown): BuilderDocument {
-  if (!isRecord(raw) || !isRecord(raw.blocks)) {
-    throw new AppError("VALIDATION", "AI tidak mengembalikan struktur dokumen.");
+  const candidate = unwrapDocumentCandidate(raw);
+  const normalized = normalizeBlocksContainer(candidate);
+
+  if (!candidate || !normalized || Object.keys(normalized.blocks).length === 0) {
+    throw new AppError(
+      "VALIDATION",
+      "AI tidak mengembalikan struktur dokumen (blok tidak ditemukan). Coba prompt yang lebih spesifik.",
+    );
   }
 
   const idMap = new Map<string, string>();
   const usedIds = new Set<string>();
   const blocks: Record<string, Block> = {};
 
-  for (const [rawId, rawBlock] of Object.entries(raw.blocks)) {
+  for (const [rawId, rawBlock] of Object.entries(normalized.blocks)) {
     if (!isRecord(rawBlock)) continue;
     if (typeof rawBlock.type !== "string") continue;
     if (!(BLOCK_TYPES as readonly string[]).includes(rawBlock.type)) continue;
@@ -214,8 +288,8 @@ export function sanitizeAiDocument(raw: unknown): BuilderDocument {
   }
 
   let rootId =
-    typeof raw.rootId === "string" && idMap.has(raw.rootId)
-      ? idMap.get(raw.rootId)!
+    normalized.rootId && idMap.has(normalized.rootId)
+      ? idMap.get(normalized.rootId)!
       : Object.values(blocks).find((block) => block.type === "container")?.id;
 
   if (!rootId || !blocks[rootId]) {
@@ -225,6 +299,15 @@ export function sanitizeAiDocument(raw: unknown): BuilderDocument {
 
   if (blocks[rootId]?.type !== "container") {
     blocks[rootId] = { ...blocks[rootId]!, type: "container" };
+  }
+
+  const childIds = new Set(Object.values(blocks).flatMap((block) => block.children));
+
+  for (const block of Object.values(blocks)) {
+    if (block.id === rootId) continue;
+    if (childIds.has(block.id)) continue;
+    if (block.type === "column" || block.type === "columns") continue;
+    blocks[rootId]?.children.push(block.id);
   }
 
   const ids = Object.keys(blocks);
@@ -238,7 +321,7 @@ export function sanitizeAiDocument(raw: unknown): BuilderDocument {
     }
   }
 
-  const meta = isRecord(raw.meta) ? raw.meta : {};
+  const meta = isRecord(candidate.meta) ? candidate.meta : {};
   const fontFamily =
     typeof meta.fontFamily === "string" && isSafeFontFamily(meta.fontFamily) ? meta.fontFamily : undefined;
 
@@ -246,7 +329,7 @@ export function sanitizeAiDocument(raw: unknown): BuilderDocument {
     version: 1,
     rootId,
     blocks,
-    fonts: sanitizeFonts(raw.fonts),
+    fonts: sanitizeFonts(candidate.fonts),
     meta: {
       title: typeof meta.title === "string" ? meta.title.slice(0, 200) : "Halaman AI",
       description: typeof meta.description === "string" ? meta.description.slice(0, 500) : undefined,

@@ -31,6 +31,8 @@ describe("prompt builder", () => {
 
     expect(messages).toHaveLength(2);
     expect(messages[0]?.content).toContain("Blok tersedia");
+    expect(messages[0]?.content).toContain("KONTRAK WAJIB");
+    expect(messages[0]?.content).toContain('"rootId":"root"');
     expect(messages[1]?.content).toContain("<<<PROMPT");
     expect(messages[1]?.content).toContain("Landing page kopi");
   });
@@ -63,5 +65,6 @@ describe("prompt builder", () => {
     const repaired = buildRepairMessages(base, "{invalid}", ["root tidak ada"]);
 
     expect(repaired.at(-1)?.content).toContain("root tidak ada");
+    expect(repaired.at(-1)?.content).toContain('"blocks"');
   });
 });
