@@ -8,8 +8,11 @@ import {
   createPage,
   deletePage,
   duplicatePage,
+  getPageForEditor,
+  publishPage,
   renamePage,
   savePageContent,
+  unpublishPage,
 } from "@/server/services/page-service";
 import {
   createPageSchema,
@@ -106,5 +109,39 @@ export async function savePageContentAction(input: {
     return { ok: true, data: { revision: result.revision } };
   } catch (error) {
     return toActionError(error, "savePageContentAction");
+  }
+}
+
+export async function publishPageAction(
+  pageId: string,
+): Promise<ActionResult<{ publicSlug: string; url: string }>> {
+  try {
+    const user = await requireUser();
+    const parsed = pageIdSchema.safeParse(pageId);
+    if (!parsed.success) return invalid(parsed.error);
+
+    const published = await publishPage({ userId: user.id, pageId: parsed.data });
+
+    revalidatePath(`/pages/${published.publicSlug}`);
+    return { ok: true, data: published };
+  } catch (error) {
+    return toActionError(error, "publishPageAction");
+  }
+}
+
+export async function unpublishPageAction(pageId: string): Promise<ActionResult> {
+  try {
+    const user = await requireUser();
+    const parsed = pageIdSchema.safeParse(pageId);
+    if (!parsed.success) return invalid(parsed.error);
+
+    // publicSlug tetap tersimpan setelah unpublish, jadi URL publiknya masih bisa di-revalidate.
+    const page = await getPageForEditor({ userId: user.id, pageId: parsed.data });
+    await unpublishPage({ userId: user.id, pageId: parsed.data });
+
+    if (page.publicSlug) revalidatePath(`/pages/${page.publicSlug}`);
+    return { ok: true, data: undefined };
+  } catch (error) {
+    return toActionError(error, "unpublishPageAction");
   }
 }

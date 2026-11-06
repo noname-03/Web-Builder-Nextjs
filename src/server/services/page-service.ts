@@ -13,11 +13,15 @@ import { isUniqueConstraintError } from "@/server/prisma-errors";
 import {
   createPageRecord,
   findOwnedPage,
+  findPublishedPageByPublicSlug,
   getPageRevision,
   listPagesByProject,
   pageSlugExists,
+  PublicSlugUnavailableError,
+  publishPageRecord,
   renamePageRecord,
   softDeletePage,
+  unpublishPageRecord,
   updatePageContent,
 } from "@/server/repositories/page-repository";
 import { findOwnedProject } from "@/server/repositories/project-repository";
@@ -83,6 +87,8 @@ export async function getPageForEditor(input: { pageId: string; userId: string }
     updatedAt: page.updatedAt,
     projectId: page.projectId,
     projectName: page.project.name,
+    isPublished: page.isPublished,
+    publicSlug: page.publicSlug,
     document,
     documentIsValid,
   };
@@ -122,6 +128,53 @@ export async function renamePage(input: { userId: string; pageId: string; title:
 export async function deletePage(input: { userId: string; pageId: string }): Promise<void> {
   const count = await softDeletePage(input);
   if (count === 0) throw new AppError("NOT_FOUND", "Halaman tidak ditemukan.");
+}
+
+export async function publishPage(input: {
+  userId: string;
+  pageId: string;
+}): Promise<{ publicSlug: string; url: string }> {
+  let published: { publicSlug: string } | null;
+
+  try {
+    published = await publishPageRecord({ pageId: input.pageId, userId: input.userId });
+  } catch (error) {
+    if (error instanceof PublicSlugUnavailableError) {
+      throw new AppError("CONFLICT", "Gagal membuat URL publik yang unik. Coba lagi.");
+    }
+    throw error;
+  }
+
+  if (!published) throw new AppError("NOT_FOUND", "Halaman tidak ditemukan.");
+
+  return { publicSlug: published.publicSlug, url: `/pages/${published.publicSlug}` };
+}
+
+export async function unpublishPage(input: { userId: string; pageId: string }): Promise<void> {
+  const count = await unpublishPageRecord({ pageId: input.pageId, userId: input.userId });
+  if (count === 0) throw new AppError("NOT_FOUND", "Halaman tidak ditemukan.");
+}
+
+/**
+ * Dokumen publik untuk pengunjung. Konten rusak tidak boleh melempar error ke publik:
+ * fallback ke dokumen kosong dengan judul halaman.
+ */
+export async function getPublishedPageForRender(
+  publicSlug: string,
+): Promise<{ document: BuilderDocument; title: string } | null> {
+  if (!publicSlug) return null;
+
+  const page = await findPublishedPageByPublicSlug(publicSlug);
+  if (!page || !page.publicSlug) return null;
+
+  let document: BuilderDocument;
+  try {
+    document = normalizeDocument(page.content, page.title);
+  } catch {
+    document = createEmptyDocument(page.title);
+  }
+
+  return { document, title: page.title };
 }
 
 export async function duplicatePage(input: { userId: string; pageId: string }) {
