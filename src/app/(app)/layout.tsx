@@ -16,6 +16,9 @@ export default async function AppLayout({ children }: Readonly<{ children: React
             <Link href="/dashboard" className="text-sm text-slate-600 hover:text-slate-900">
               Dashboard
             </Link>
+            <Link href="/settings/ai" className="text-sm text-slate-600 hover:text-slate-900">
+              AI
+            </Link>
             {user.role === "ADMIN" ? (
               <Link href="/admin/users" className="text-sm text-slate-600 hover:text-slate-900">
                 Admin

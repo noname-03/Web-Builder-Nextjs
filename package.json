@@ -11,7 +11,9 @@
     "test": "vitest run",
     "db:migrate": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "ai:cleanup": "tsx scripts/ai-cleanup.ts",
+    "ai:reencrypt": "tsx scripts/ai-reencrypt.ts"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"

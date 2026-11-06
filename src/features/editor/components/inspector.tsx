@@ -4,6 +4,7 @@ import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input, Label } from "@/components/ui/input";
+import { AiPanel } from "@/features/ai/components/ai-panel";
 import { BLOCK_DEFINITIONS } from "@/features/editor/blocks/registry";
 import {
   FONT_WEIGHTS,
@@ -27,7 +28,7 @@ const STYLE_CONTROLS: StyleControl[] = [
     key: "fontWeight",
     label: "Ketebalan font",
     kind: "select",
-    options: ["400", "500", "600", "700", "800"],
+    options: ["100", "200", "300", "400", "500", "600", "700", "800", "900"],
   },
   {
     key: "textAlign",
@@ -64,10 +65,38 @@ export function Inspector() {
   const selectedId = useEditor((state) => state.selectedId);
   const document = useEditor((state) => state.document);
   const selected = selectedId ? document.blocks[selectedId] : undefined;
+  const [tab, setTab] = useState<"properties" | "ai">("properties");
 
   return (
-    <aside className="hidden w-72 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-3 lg:block">
-      {selected ? <BlockInspector block={selected} /> : <PageInspector />}
+    <aside className="hidden w-80 shrink-0 overflow-y-auto border-l border-slate-200 bg-white p-3 lg:block">
+      <div className="mb-3 flex rounded-md bg-slate-100 p-1">
+        <button
+          type="button"
+          onClick={() => setTab("properties")}
+          aria-pressed={tab === "properties"}
+          className={
+            tab === "properties"
+              ? "flex-1 rounded bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-sm"
+              : "flex-1 rounded px-2 py-1 text-xs text-slate-600"
+          }
+        >
+          Properti
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("ai")}
+          aria-pressed={tab === "ai"}
+          className={
+            tab === "ai"
+              ? "flex-1 rounded bg-white px-2 py-1 text-xs font-medium text-slate-900 shadow-sm"
+              : "flex-1 rounded px-2 py-1 text-xs text-slate-600"
+          }
+        >
+          Asisten AI
+        </button>
+      </div>
+
+      {tab === "ai" ? <AiPanel /> : selected ? <BlockInspector block={selected} /> : <PageInspector />}
     </aside>
   );
 }
@@ -277,6 +306,14 @@ function BlockInspector({ block }: { block: Block }) {
   const removeBlock = useEditor((state) => state.removeBlock);
   const fonts = useEditor((state) => state.document.fonts);
 
+  const isImageBrand = block.type === "navbar" && block.props.brandType === "image";
+  const fields = definition.fields.filter((field) => {
+    if (block.type !== "navbar") return true;
+    if (field.key === "brand") return !isImageBrand;
+    if (["brandImage", "brandImageAlt", "brandImageWidth"].includes(field.key)) return isImageBrand;
+    return true;
+  });
+
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
@@ -286,10 +323,10 @@ function BlockInspector({ block }: { block: Block }) {
         </Button>
       </div>
 
-      {definition.fields.length > 0 ? (
+      {fields.length > 0 ? (
         <div className="space-y-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Konten</p>
-          {definition.fields.map((field) => {
+          {fields.map((field) => {
             const value = block.props[field.key];
             const stringValue =
               typeof value === "string" || typeof value === "number" ? String(value) : "";
@@ -422,16 +459,28 @@ function StyleControlInput({
   if (control.kind === "color") {
     const safeColor = /^#[0-9a-f]{6}$/i.test(value) ? value : "#000000";
     return (
-      <div className="flex gap-2">
-        <input
-          id={id}
-          type="color"
-          value={safeColor}
-          onChange={(event) => onChange(event.target.value)}
-          aria-label={`${control.label} picker`}
-          className="h-10 w-12 rounded border border-slate-300"
-        />
-        <Input value={value} placeholder="#000000" onChange={(event) => onChange(event.target.value)} />
+      <div className="space-y-1">
+        <div className="flex gap-2">
+          <input
+            id={id}
+            type="color"
+            value={safeColor}
+            onChange={(event) => onChange(event.target.value)}
+            aria-label={`${control.label} picker`}
+            className="h-10 w-12 shrink-0 rounded border border-slate-300"
+          />
+          <Input
+            value={value}
+            placeholder="Tidak diatur"
+            aria-label={control.label}
+            onChange={(event) => onChange(event.target.value)}
+          />
+        </div>
+        {value ? (
+          <Button size="sm" variant="ghost" onClick={() => onChange("")}>
+            Hapus warna
+          </Button>
+        ) : null}
       </div>
     );
   }

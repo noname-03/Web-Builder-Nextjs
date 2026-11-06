@@ -23,6 +23,16 @@ enum VersionSource {
   RESTORE
 }
 
+enum AiMode {
+  GENERATE
+  MODIFY
+}
+
+enum AiStatus {
+  SUCCESS
+  FAILED
+}
+
 model User {
   id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email        String   @unique @db.VarChar(255)
@@ -33,10 +43,12 @@ model User {
   createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt    DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  sessions   Session[]
-  projects   Project[]
-  exportLogs ExportLog[]
-  templates  Template[]
+  sessions      Session[]
+  projects      Project[]
+  exportLogs    ExportLog[]
+  templates     Template[]
+  aiProviders   AiProvider[]
+  aiGenerations AiGeneration[]
 
   @@index([role])
   @@index([isActive])
@@ -98,9 +110,10 @@ model Page {
   createdAt DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
   updatedAt DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-  project    Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  versions   PageVersion[]
-  exportLogs ExportLog[]
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  versions      PageVersion[]
+  exportLogs    ExportLog[]
+  aiGenerations AiGeneration[]
 
   @@index([projectId, deletedAt, updatedAt(sort: Desc)])
   @@map("pages")
@@ -150,4 +163,49 @@ model ExportLog {
   @@index([userId, createdAt(sort: Desc)])
   @@index([pageId])
   @@map("export_logs")
+}
+
+model AiProvider {
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId          String   @map("user_id") @db.Uuid
+  name            String   @db.VarChar(80)
+  baseUrl         String   @map("base_url") @db.VarChar(300)
+  apiKeyEncrypted String   @map("api_key_encrypted") @db.Text
+  apiKeyLast4     String   @map("api_key_last4") @db.VarChar(4)
+  model           String   @db.VarChar(120)
+  temperature     Float    @default(0.7)
+  maxTokens       Int      @default(4096) @map("max_tokens")
+  isDefault       Boolean  @default(false) @map("is_default")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  generations AiGeneration[]
+
+  @@index([userId])
+  @@map("ai_providers")
+}
+
+model AiGeneration {
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  userId           String   @map("user_id") @db.Uuid
+  pageId           String?  @map("page_id") @db.Uuid
+  providerId       String?  @map("provider_id") @db.Uuid
+  mode             AiMode
+  prompt           String   @db.Text
+  status           AiStatus
+  errorCode        String?  @map("error_code") @db.VarChar(40)
+  promptTokens     Int?     @map("prompt_tokens")
+  completionTokens Int?     @map("completion_tokens")
+  catalogVersion   String?  @map("catalog_version") @db.VarChar(40)
+  durationMs       Int      @map("duration_ms")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user     User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  page     Page?       @relation(fields: [pageId], references: [id], onDelete: SetNull)
+  provider AiProvider? @relation(fields: [providerId], references: [id], onDelete: SetNull)
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([pageId])
+  @@map("ai_generations")
 }
