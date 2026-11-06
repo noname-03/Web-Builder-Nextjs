@@ -633,12 +633,14 @@ type GenerateDocumentResult = {
 
 ## FASE 8: Product Polish, Provider Onboarding, Publish, dan Conversion UX
 
-> **Validasi per 2026-11-06:**
-> - Provider connection test: **SUDAH ADA**, tetapi berjalan setelah provider tersimpan. Task 8.1 mengubahnya menjadi pre-save validation.
-> - Hide panel: **SUDAH ADA**, tetapi saat ini berupa ikon panel dengan tooltip singkat. Task 8.2 memperjelas affordance dengan label teks, status terbuka/tersembunyi, dan onboarding hint.
-> - Home marketing: **ADA**, tetapi belum menampilkan AI provider, prompt builder, template premium, keamanan, dan export/publish sebagai selling points. Task 8.3 memperluas conversion UX.
-> - Publish: **BELUM ADA**. Saat ini hanya download export HTML. Task 8.4 menambah route publik `/pages/[slug]` dan menu Export/Publish.
-> - Template: **SUDAH ADA 10 template**, tetapi Task 8.5 menambahkan quality gate visual, thumbnail, metadata, kategori, dan regression check.
+> **Status per 2026-11-06: SUDAH DIIMPLEMENTASIKAN DAN DIVERIFIKASI (Task 8.1–8.8).** Bukti lengkap ada di `docs/08-acceptance-fase8.md`.
+> - 8.1 Provider dicek koneksinya sebelum disimpan; kegagalan tidak menulis row.
+> - 8.2 Toggle panel berlabel status (`Terbuka`/`Tersembunyi`) + tombol restore floating.
+> - 8.3 Home marketing baru menjual AI, provider sendiri, template, visual editor, export/publish, dan keamanan.
+> - 8.4 Export menu (Download HTML / Publish) + route publik `/pages/[slug]` dengan publish/unpublish.
+> - 8.5 Template gallery berupa kartu thumbnail + kategori + quality gate; admin menampilkan metadata.
+> - 8.6/8.7 Acceptance visual dan matriks akhir tercatat.
+> - 8.8 `GET /models` + fallback model manual + cache 5 menit + rate limit.
 
 ### Task 8.1: Connection check sebelum provider disimpan
 - **Masalah:** form provider saat ini menyimpan konfigurasi lebih dulu; user baru mengetahui Base URL/API key/model valid setelah menekan aksi Tes.

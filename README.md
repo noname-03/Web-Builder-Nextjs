@@ -154,6 +154,19 @@ AI_REENCRYPT_OLD_KEY="<key-lama>" AI_REENCRYPT_NEW_KEY="<key-baru>" npm run ai:r
 
 Setelah rotasi, perbarui `ENCRYPTION_KEY` di `.env`.
 
+### Model list
+
+Di dialog provider, tombol **Ambil daftar model** memanggil `GET {baseUrl}/models` (opsional, didukung banyak provider OpenAI-compatible). Jika provider tidak menyediakan endpoint tersebut, isi model secara manual — penyimpanan tetap bisa dilakukan. Model list di-cache 5 menit per provider.
+
+### Publish halaman
+
+Di editor, tombol **Export** memiliki dua pilihan:
+
+1. **Download HTML** — mengunduh `{slug}.html`.
+2. **Publish halaman** — menerbitkan halaman ke URL publik `/pages/<public-slug>`. URL dapat disalin dari dialog; gunakan **Unpublish** untuk menonaktifkannya (URL kembali 404).
+
+Halaman draft, terhapus, atau milik user lain tidak dapat diakses publik. Publish memakai `publicSlug` global unik yang dibuat saat publish pertama.
+
 ### Batasan
 
 - Endpoint harus kompatibel dengan `POST {baseUrl}/chat/completions`.
