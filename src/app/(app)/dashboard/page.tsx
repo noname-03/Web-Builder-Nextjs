@@ -24,8 +24,7 @@ export default async function DashboardPage() {
       {items.length === 0 ? (
         <EmptyState
           title="Belum ada project"
-          description="Buat project pertama Anda, lalu tambahkan halaman di dalamnya."
-          action={<CreateProjectDialog />}
+          description="Gunakan tombol Project Baru di atas untuk membuat project pertama Anda."
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">

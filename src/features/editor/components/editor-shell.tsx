@@ -24,6 +24,7 @@ import {
   useEditor,
   useEditorStoreApi,
 } from "@/features/editor/store/editor-context";
+import { readPersistedPanels } from "@/features/editor/store/editor-store";
 import { savePageContentAction } from "@/features/pages/actions";
 import type { BuilderDocument } from "@/features/editor/schemas/document";
 
@@ -65,6 +66,7 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
   const pageId = useEditor((state) => state.pageId);
   const slug = useEditor((state) => state.slug);
   const title = useEditor((state) => state.title);
+  const panels = useEditor((state) => state.panels);
 
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [versions, setVersions] = useState<VersionItemData[]>([]);
@@ -139,6 +141,11 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
     saveNowRef.current = saveNow;
   }, [saveNow]);
 
+  useEffect(() => {
+    const persisted = readPersistedPanels();
+    if (persisted) store.getState().setPanels(persisted);
+  }, [store]);
+
   const refreshVersions = useCallback(async () => {
     setVersionsLoading(true);
     const result = await loadVersionsAction(store.getState().pageId);
@@ -190,6 +197,18 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
       }
 
       if (isTyping) return;
+
+      if (event.key === "[") {
+        event.preventDefault();
+        state.togglePanel("palette");
+        return;
+      }
+
+      if (event.key === "]") {
+        event.preventDefault();
+        state.togglePanel("inspector");
+        return;
+      }
 
       if (modifier && event.key.toLowerCase() === "z" && !event.shiftKey) {
         event.preventDefault();
@@ -337,9 +356,9 @@ function EditorScreen({ documentIsValid }: { documentIsValid: boolean }) {
 
         <EditorDnd>
           <div className="flex flex-1 overflow-hidden">
-            <Palette />
+            {panels.palette ? <Palette /> : null}
             <Canvas />
-            <Inspector />
+            {panels.inspector ? <Inspector /> : null}
           </div>
         </EditorDnd>
       </div>

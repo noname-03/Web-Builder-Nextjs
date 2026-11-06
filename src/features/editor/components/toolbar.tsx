@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { PanelLeft, PanelRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useEditor } from "@/features/editor/store/editor-context";
 import type { Viewport } from "@/features/editor/store/editor-store";
@@ -40,6 +41,10 @@ export function Toolbar({
   const redo = useEditor((state) => state.redo);
   const canUndo = useEditor((state) => state.past.length > 0);
   const canRedo = useEditor((state) => state.future.length > 0);
+  const panels = useEditor((state) => state.panels);
+  const togglePanel = useEditor((state) => state.togglePanel);
+
+  const saveDisabled = saveStatus === "saved" || saveStatus === "saving";
 
   return (
     <header className="border-b border-slate-200 bg-white px-3 py-2">
@@ -55,6 +60,37 @@ export function Toolbar({
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <div className="flex rounded-md border border-slate-300 p-0.5">
+            <button
+              type="button"
+              aria-label={panels.palette ? "Sembunyikan panel blok" : "Tampilkan panel blok"}
+              aria-pressed={panels.palette}
+              title={panels.palette ? "Sembunyikan panel blok ([)" : "Tampilkan panel blok ([)"}
+              onClick={() => togglePanel("palette")}
+              className={
+                panels.palette
+                  ? "rounded bg-slate-900 p-1.5 text-white"
+                  : "rounded p-1.5 text-slate-500 hover:bg-slate-100"
+              }
+            >
+              <PanelLeft className="size-4" aria-hidden="true" />
+            </button>
+            <button
+              type="button"
+              aria-label={panels.inspector ? "Sembunyikan panel properti" : "Tampilkan panel properti"}
+              aria-pressed={panels.inspector}
+              title={panels.inspector ? "Sembunyikan panel properti (])" : "Tampilkan panel properti (])"}
+              onClick={() => togglePanel("inspector")}
+              className={
+                panels.inspector
+                  ? "rounded bg-slate-900 p-1.5 text-white"
+                  : "rounded p-1.5 text-slate-500 hover:bg-slate-100"
+              }
+            >
+              <PanelRight className="size-4" aria-hidden="true" />
+            </button>
+          </div>
+
           <div className="flex rounded-md border border-slate-300 p-0.5">
             {VIEWPORTS.map((item) => (
               <button
@@ -90,7 +126,7 @@ export function Toolbar({
             {STATUS_TEXT[saveStatus] ?? ""}
           </span>
 
-          <Button size="sm" variant="secondary" onClick={onSave}>
+          <Button size="sm" variant="secondary" onClick={onSave} disabled={saveDisabled}>
             Simpan
           </Button>
           <Button size="sm" variant="secondary" onClick={onOpenVersions}>

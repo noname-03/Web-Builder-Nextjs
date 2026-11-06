@@ -20,6 +20,31 @@ import type {
 
 export type Viewport = "desktop" | "tablet" | "mobile";
 export type SaveStatus = "saved" | "dirty" | "saving" | "error";
+export type EditorPanels = { palette: boolean; inspector: boolean };
+
+const PANELS_STORAGE_KEY = "wb:editor-panels";
+
+export function readPersistedPanels(): EditorPanels | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(PANELS_STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<EditorPanels>;
+    if (typeof parsed.palette !== "boolean" || typeof parsed.inspector !== "boolean") return null;
+    return { palette: parsed.palette, inspector: parsed.inspector };
+  } catch {
+    return null;
+  }
+}
+
+function persistPanels(panels: EditorPanels): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(PANELS_STORAGE_KEY, JSON.stringify(panels));
+  } catch {
+    // Storage can be unavailable (private mode); preference simply won't persist.
+  }
+}
 
 type EditorState = {
   pageId: string;
@@ -37,8 +62,12 @@ type EditorState = {
   future: BuilderDocument[];
   conflict: boolean;
   sessionExpired: boolean;
+  panels: EditorPanels;
 
   selectBlock: (id: string | null) => void;
+  togglePanel: (panel: keyof EditorPanels) => void;
+  setPanels: (panels: EditorPanels) => void;
+  applyDocument: (document: BuilderDocument) => void;
   setViewport: (viewport: Viewport) => void;
   insertBlock: (type: BlockType, parentId: string, index: number) => void;
   moveBlock: (blockId: string, parentId: string, index: number) => void;
@@ -105,8 +134,29 @@ export function createEditorStore(input: {
       future: [],
       conflict: false,
       sessionExpired: false,
+      panels: { palette: true, inspector: true },
 
       selectBlock: (id) => set({ selectedId: id }),
+
+      togglePanel: (panel) => {
+        const next = { ...get().panels, [panel]: !get().panels[panel] };
+        persistPanels(next);
+        set({ panels: next });
+      },
+
+      setPanels: (panels) => set({ panels }),
+
+      applyDocument: (document) => {
+        const state = get();
+        set({
+          document,
+          past: [...state.past, state.document].slice(-HISTORY_LIMIT),
+          future: [],
+          saveStatus: "dirty",
+          selectedId: null,
+          conflict: false,
+        });
+      },
       setViewport: (viewport) => set({ viewport }),
       setTitle: (title) => set({ title }),
 

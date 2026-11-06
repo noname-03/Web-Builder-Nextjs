@@ -21,7 +21,9 @@ export function CreatePageDialog({
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<ActionError | null>(null);
+  const [templateId, setTemplateId] = useState("");
   const router = useRouter();
+  const selectedTemplate = templates.find((template) => template.id === templateId);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -67,14 +69,22 @@ export function CreatePageDialog({
             </div>
             <div>
               <Label htmlFor="page-template">Template</Label>
-              <Select id="page-template" name="templateId" defaultValue="">
+              <Select
+                id="page-template"
+                name="templateId"
+                value={templateId}
+                onChange={(event) => setTemplateId(event.target.value)}
+              >
                 <option value="">Halaman kosong</option>
                 {templates.map((template) => (
-                  <option key={template.id} value={template.id}>
+                  <option key={template.id} value={template.id} title={template.description ?? ""}>
                     {template.name}
                   </option>
                 ))}
               </Select>
+              <p className="mt-1 min-h-4 text-xs text-slate-500">
+                {selectedTemplate?.description || "Mulai dari kanvas kosong."}
+              </p>
               <FormError messages={error?.fieldErrors?.templateId} />
             </div>
             {error ? (

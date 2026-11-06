@@ -1,157 +1,11 @@
-import { randomUUID } from "node:crypto";
 import { PrismaClient, type Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import {
-  createEmptyDocument,
-  parseDocument,
-  type Block,
-  type BuilderDocument,
-} from "../src/features/editor/schemas/document";
+import { parseDocument } from "../src/features/editor/schemas/document";
+import { SEED_TEMPLATES } from "./seed-templates";
 
 const prisma = new PrismaClient();
 
-function newId(): string {
-  return randomUUID().replace(/-/g, "").slice(0, 10);
-}
-
-type BlockInput = {
-  type: Block["type"];
-  props?: Record<string, unknown>;
-  style?: Record<string, string>;
-  children?: string[];
-};
-
-function addBlock(doc: BuilderDocument, parentId: string, input: BlockInput): string {
-  const id = newId();
-  doc.blocks[id] = {
-    id,
-    type: input.type,
-    props: input.props ?? {},
-    style: (input.style ?? {}) as Block["style"],
-    children: input.children ?? [],
-  };
-  doc.blocks[parentId]?.children.push(id);
-  return id;
-}
-
-function buildLandingTemplate(): BuilderDocument {
-  const doc = createEmptyDocument("Landing Page Sederhana");
-  const root = doc.rootId;
-
-  addBlock(doc, root, {
-    type: "navbar",
-    props: {
-      brand: "Brand Anda",
-      items: [
-        { label: "Beranda", href: "#" },
-        { label: "Fitur", href: "#" },
-        { label: "Kontak", href: "#" },
-      ],
-    },
-  });
-
-  addBlock(doc, root, {
-    type: "hero",
-    props: {
-      title: "Bangun halaman web tanpa coding",
-      subtitle: "Susun konten dengan drag & drop, lalu unduh sebagai HTML.",
-      buttonText: "Mulai Sekarang",
-      buttonHref: "#",
-    },
-    style: { textAlign: "center" },
-  });
-
-  const columns = addBlock(doc, root, {
-    type: "columns",
-    props: { columns: 3, gap: "16px" },
-    style: { margin: "24px 0" },
-  });
-
-  for (const title of ["Mudah Dipakai", "Cepat", "Fleksibel"]) {
-    const columnId = newId();
-    doc.blocks[columnId] = {
-      id: columnId,
-      type: "column",
-      props: {},
-      style: { padding: "16px", border: "1px solid #e5e7eb", borderRadius: "8px" },
-      children: [],
-    };
-    doc.blocks[columns]?.children.push(columnId);
-
-    addBlock(doc, columnId, {
-      type: "heading",
-      props: { text: title, level: 3 },
-    });
-    addBlock(doc, columnId, {
-      type: "text",
-      props: { text: "Jelaskan keunggulan fitur ini dalam satu atau dua kalimat singkat." },
-    });
-  }
-
-  addBlock(doc, root, {
-    type: "footer",
-    props: { text: "© 2026 Brand Anda. Semua hak dilindungi." },
-  });
-
-  return doc;
-}
-
-function buildPortfolioTemplate(): BuilderDocument {
-  const doc = createEmptyDocument("Portofolio");
-  const root = doc.rootId;
-
-  addBlock(doc, root, {
-    type: "heading",
-    props: { text: "Nama Anda", level: 1 },
-  });
-  addBlock(doc, root, {
-    type: "text",
-    props: { text: "Desainer produk dan pengembang web yang berfokus pada pengalaman pengguna." },
-  });
-  addBlock(doc, root, {
-    type: "divider",
-    props: {},
-    style: { margin: "24px 0" },
-  });
-  addBlock(doc, root, {
-    type: "heading",
-    props: { text: "Proyek Terbaru", level: 2 },
-  });
-  addBlock(doc, root, {
-    type: "text",
-    props: { text: "Tuliskan deskripsi singkat proyek unggulan Anda di sini." },
-  });
-  addBlock(doc, root, {
-    type: "button",
-    props: { text: "Hubungi Saya", href: "mailto:hello@example.com" },
-  });
-
-  return doc;
-}
-
-function buildEmptyTemplate(): BuilderDocument {
-  return createEmptyDocument("Halaman Kosong");
-}
-
-type TemplateSeed = { name: string; description: string; content: BuilderDocument };
-
-const TEMPLATES: TemplateSeed[] = [
-  {
-    name: "Landing Page Sederhana",
-    description: "Halaman promosi dengan hero, tiga kolom fitur, dan footer.",
-    content: parseDocument(buildLandingTemplate()),
-  },
-  {
-    name: "Portofolio",
-    description: "Halaman perkenalan singkat dengan tombol kontak.",
-    content: parseDocument(buildPortfolioTemplate()),
-  },
-  {
-    name: "Halaman Kosong",
-    description: "Mulai dari nol dengan satu container kosong.",
-    content: parseDocument(buildEmptyTemplate()),
-  },
-];
+const LEGACY_TEMPLATE_NAMES = ["Landing Page Sederhana", "Portofolio"];
 
 async function seedAdmin(): Promise<void> {
   const email = (process.env.SEED_ADMIN_EMAIL ?? "admin@example.com").trim().toLowerCase();
@@ -168,9 +22,10 @@ async function seedAdmin(): Promise<void> {
 }
 
 async function seedTemplates(): Promise<void> {
-  for (const template of TEMPLATES) {
+  for (const template of SEED_TEMPLATES) {
+    const validated = parseDocument(template.content);
+    const content = validated as unknown as Prisma.InputJsonValue;
     const existing = await prisma.template.findFirst({ where: { name: template.name } });
-    const content = template.content as unknown as Prisma.InputJsonValue;
 
     if (existing) {
       await prisma.template.update({
@@ -185,7 +40,12 @@ async function seedTemplates(): Promise<void> {
     });
   }
 
-  console.log(`${TEMPLATES.length} template siap.`);
+  await prisma.template.updateMany({
+    where: { name: { in: LEGACY_TEMPLATE_NAMES } },
+    data: { isActive: false },
+  });
+
+  console.log(`${SEED_TEMPLATES.length} template siap.`);
 }
 
 async function main(): Promise<void> {
