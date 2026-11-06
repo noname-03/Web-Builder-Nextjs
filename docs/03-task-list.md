@@ -497,6 +497,134 @@ Wajib diverifikasi (tulis test atau checklist manual untuk tiap butir):
 - Perbarui `README.md`: cara membuat `ENCRYPTION_KEY`, cara menambah provider, contoh Base URL (OpenAI, OpenRouter, Ollama), dan peringatan keamanan.
 - **Selesai jika:** `npm run typecheck && npm run lint && npm test && npm run build` hijau dan alur end-to-end terverifikasi dengan server tiruan.
 
+### Task 7.15: Kontrak domain AI dan tipe terpusat
+- Buat `features/ai/types.ts` sebagai satu sumber tipe untuk `AiMode`, `AiStatus`, `AiProviderPublic`, `AiUsage`, `GenerateDocumentInput`, `GenerateDocumentResult`, `ChatMessage`, dan `AiErrorCode`.
+- Jangan memakai string bebas untuk mode/status/error di UI, service, repository, dan test.
+- Definisikan kontrak hasil generate:
+
+```ts
+type GenerateDocumentResult = {
+  document: BuilderDocument;
+  provider: { id: string; name: string; model: string };
+  usage: { promptTokens?: number; completionTokens?: number; durationMs: number };
+  warnings: string[];
+};
+```
+
+- **Selesai jika:** tidak ada duplikasi tipe AI dan `ActionResult<GenerateDocumentResult>` terpakai konsisten dari service sampai UI.
+
+### Task 7.16: Migration dan integritas database AI
+- Sebelum migration, backup schema/database lokal dan pastikan working tree bersih.
+- Tambahkan relation Prisma dua arah: `User.aiProviders`, `User.aiGenerations`, `Page.aiGenerations`, `AiProvider.generations`.
+- Tambahkan enum Prisma `AiMode` dan `AiStatus`; gunakan `@map` untuk nama snake_case sesuai schema existing.
+- Migration harus membuat seluruh FK, index, CHECK constraint, dan partial unique index dalam urutan aman.
+- Verifikasi rollback secara konseptual: migration down tidak diperlukan untuk production, tetapi dokumenkan prosedur restore backup jika migration gagal.
+- Seed tidak boleh membuat provider AI atau menyimpan API key.
+- **Selesai jika:** `prisma validate`, `prisma migrate dev`, `prisma generate`, dan query Prisma smoke test semuanya lolos.
+
+### Task 7.17: Validasi dan canonicalization Base URL
+- Buat `server/ai/base-url.ts` dengan fungsi `normalizeBaseUrl`, `assertSafeBaseUrl`, `getCompletionUrl`.
+- Normalisasi: trim, hapus trailing slash, pertahankan path `/v1`, hasil akhir harus tepat `${baseUrl}/chat/completions` tanpa double slash.
+- Tolak URL dengan credential, query, fragment, port tidak valid, protocol selain HTTP(S), hostname kosong, dan redirect lintas host.
+- Bedakan mode production dan development untuk localhost; jangan memakai `NODE_ENV` dari client.
+- Tambahkan test untuk: `https://api.openai.com/v1`, `https://openrouter.ai/api/v1/`, `http://localhost:11434/v1`, URL metadata cloud, IPv4 privat, IPv6 loopback, credential URL, dan query URL.
+- **Selesai jika:** semua URL disimpan dalam bentuk canonical dan validasi dilakukan ulang sebelum request.
+
+### Task 7.18: Siklus hidup secret dan rotasi encryption key
+- Tambahkan `ENCRYPTION_KEY_VERSION` default `v1` ke env dan payload ciphertext.
+- `decryptSecret` harus membaca versi payload, bukan menebak versi dari env.
+- Siapkan fungsi internal `decryptWithKeyVersion` dan dokumentasikan rotasi: baca dengan key lama → enkripsi dengan key baru → update semua provider dalam transaksi.
+- Buat command operasional `npm run ai:reencrypt` yang hanya berjalan di server, meminta env key lama dan key baru, tidak mencetak plaintext/key, dan punya mode dry-run/count.
+- Jika dekripsi gagal saat generate, kembalikan pesan "Konfigurasi provider perlu disimpan ulang" dan jangan retry otomatis.
+- **Selesai jika:** rotasi key dapat diuji pada database lokal dan plaintext tidak pernah masuk log/file sementara.
+
+### Task 7.19: Request lifecycle, cancellation, retry, dan concurrency
+- Buat `AiRequestCoordinator` server-side ringan untuk membatasi satu generate aktif per `{ userId, pageId }` pada satu instance aplikasi; tetap anggap database rate limit sebagai batas utama.
+- Client memiliki `AbortController`, timeout UI, dan status `idle | preparing | generating | validating | preview | applying | error`.
+- Jangan retry otomatis untuk 400/401/403/404/validation; retry maksimal 1 kali untuk 429/502/503/network timeout dengan backoff 1–3 detik.
+- Request yang dibatalkan tidak boleh menyimpan page atau snapshot; catat `FAILED` dengan `errorCode = CANCELLED` bila request sudah mencapai server.
+- Tampilkan `requestId` non-rahasia untuk support/debug; jangan tampilkan stack trace.
+- **Selesai jika:** double click tidak membuat dua generation, cancel tidak mengubah dokumen, dan request timeout menghasilkan state UI yang pulih.
+
+### Task 7.20: Output schema versioning dan migrasi AI
+- Tambahkan `outputVersion` atau gunakan `BuilderDocument.version` sebagai kontrak eksplisit pada system prompt.
+- Katalog prompt harus menyebut versi schema dan tanggal/versi katalog; simpan hanya `catalogVersion` di `AiGeneration` bila diperlukan untuk debugging, bukan prompt system lengkap.
+- Jika schema builder berubah, buat `migrateDocument` sebelum `parseDocument` final; jangan memaksa LLM menghasilkan format lama.
+- Sediakan test untuk dokumen AI versi saat ini, dokumen legacy tanpa `fonts`, dan dokumen dengan props optional baru.
+- **Selesai jika:** perubahan schema berikutnya dapat memiliki migration function tanpa merusak page lama.
+
+### Task 7.21: Context budgeting untuk mode MODIFY
+- Buat `compactDocumentForPrompt` yang mempertahankan struktur, props penting, style aktif, meta, dan fonts; jangan mengirim data tidak perlu seperti history/versions.
+- Hitung perkiraan ukuran context sebelum request; batasi dokumen ke `AI_MAX_CONTEXT_CHARS` (env default `24000`) dan kembalikan warning jika dipangkas.
+- Prompt user dipisahkan dari JSON dokumen dengan delimiter; JSON dokumen dikirim sebagai data terstruktur, bukan instruksi.
+- Jika dokumen terlalu besar setelah compacting, tolak dengan pesan "Halaman terlalu besar untuk dimodifikasi sekaligus" dan sarankan mode generate baru.
+- **Selesai jika:** mode MODIFY tidak melebihi batas payload yang ditetapkan dan warning tampil di preview.
+
+### Task 7.22: Quality gate hasil AI sebelum preview
+- Jalankan pemeriksaan deterministic sebelum menampilkan preview:
+  - dokumen valid Zod dan struktur pohon valid;
+  - semua blok berasal dari registry;
+  - tidak ada orphan/cycle/duplicate id;
+  - tidak ada URL berbahaya, style berbahaya, HTML mentah, atau script;
+  - maksimal 500 blok dan kedalaman 12;
+  - fonts, gradient, overlay, dan brand image memenuhi validator;
+  - semua teks kosong yang tidak disengaja diberi warning, bukan langsung ditolak.
+- Preview menampilkan daftar warning yang dapat dibaca sebelum tombol "Terapkan".
+- **Selesai jika:** dokumen tidak valid tidak pernah masuk store editor dan user dapat membuang hasil tanpa perubahan page.
+
+### Task 7.23: UX prompt builder dan preset yang terarah
+- Sediakan preset prompt berbasis tujuan: SaaS, portfolio, agency, restoran, event, pricing, blog; preset hanya mengisi textarea dan tidak langsung memanggil provider.
+- Tambahkan field opsional: bahasa output, gaya visual, warna utama, target device, dan tujuan CTA. Semua dibatasi enum/length agar tidak menjadi prompt tak terbatas.
+- Tampilkan contoh prompt realistis dan hint: "AI hanya dapat memakai blok yang tersedia di editor".
+- Mode `GENERATE` menampilkan warning "akan mengganti isi preview setelah diterapkan"; mode `MODIFY` menampilkan "perubahan akan dibuat dari halaman saat ini".
+- Tombol Apply tidak boleh aktif sebelum preview valid; tombol close/escape tidak menerapkan perubahan.
+- **Selesai jika:** user baru dapat memahami alur prompt → generate → preview → apply tanpa melihat istilah teknis internal.
+
+### Task 7.24: Provider presets dan kompatibilitas OpenAI-compatible
+- Definisikan preset server-side hanya untuk metadata publik:
+  - OpenAI: `https://api.openai.com/v1`
+  - OpenRouter: `https://openrouter.ai/api/v1`
+  - Groq: `https://api.groq.com/openai/v1`
+  - DeepSeek: `https://api.deepseek.com/v1`
+  - Ollama: `http://localhost:11434/v1`
+  - LM Studio: `http://localhost:1234/v1`
+  - Kustom.
+- Preset tidak menyimpan key, tidak mengirim key ke telemetry, dan tidak menjamin model tertentu tersedia.
+- `testProviderAction` harus mengizinkan response JSON dengan field usage yang berbeda/absen; usage opsional.
+- Dukungan provider yang tidak mendukung `response_format` memakai fallback satu kali (7.5), tetapi tidak boleh fallback jika error auth/SSRF.
+- **Selesai jika:** minimal satu provider cloud dan satu provider lokal berhasil diuji dengan mock; provider unsupported menampilkan error yang jelas.
+
+### Task 7.25: Observability dan redaction
+- Buat logger server `server/ai/ai-logger.ts` dengan event terstruktur: `ai.request.started`, `ai.request.completed`, `ai.request.failed`, `ai.provider.tested`.
+- Field yang boleh dicatat: requestId, userId hash/opaque id, providerId, model, mode, durationMs, status, errorCode, usage. Dilarang: prompt penuh, dokumen, API key, Authorization header, response content.
+- Tambahkan redaction test yang mengirim key/prompt berisi secret lalu memastikan output logger tidak memuatnya.
+- Hanya gunakan `console.error` untuk error teknis dengan requestId; jangan log `error` object provider mentah karena bisa membawa request config.
+- **Selesai jika:** audit log dapat digunakan untuk debugging tanpa memuat data sensitif.
+
+### Task 7.26: Data retention dan penghapusan data AI
+- `AiGeneration` hanya menyimpan prompt terpotong sesuai batas; tambahkan kebijakan retention default 90 hari.
+- Buat housekeeping service oportunistik atau command `npm run ai:cleanup` untuk menghapus generation lama secara batch (`take` terbatas), tanpa menghapus provider aktif.
+- Saat user dihapus, FK cascade menghapus provider dan generation; verifikasi tidak ada ciphertext orphan.
+- Tambahkan UI tombol "Hapus riwayat AI" dengan konfirmasi; tidak menghapus page/version.
+- **Selesai jika:** retention dan penghapusan user/riwayat dapat diverifikasi melalui test repository.
+
+### Task 7.27: Acceptance test matrix AI
+- Buat checklist test berikut dan tandai hasilnya di PR/commit:
+
+| Area | Kasus minimum | Expected |
+|---|---|---|
+| Secret | key valid, key salah, ciphertext rusak | dekripsi hanya sukses untuk key benar |
+| Provider | create, edit tanpa ganti key, edit dengan key baru, default, delete default | state provider konsisten |
+| Network | 200, 400, 401, 404, 429, 500, timeout, invalid JSON | error terpetakan tanpa leak |
+| Security | SSRF, redirect, prompt injection, unsafe URL/style | request/output ditolak atau disanitasi |
+| Generate | prompt valid, prompt kosong, prompt terlalu panjang | dokumen valid atau error field |
+| Modify | page kecil, page besar, revision conflict | preview valid; konflik meminta konfirmasi |
+| UX | cancel, double click, reload, mobile, provider kosong | tidak ada perubahan parsial/crash |
+| Export | hasil AI dengan logo/font/gradient/background | HTML aman dan visual ter-render |
+| Isolation | user A membaca provider/generation user B | `NOT_FOUND`, tidak bocor |
+
+- **Selesai jika:** seluruh matrix memiliki bukti test atau langkah reproduksi dan semua command CI hijau.
+
 ---
 
 ## Ringkasan Definisi Selesai (Definition of Done) MVP
