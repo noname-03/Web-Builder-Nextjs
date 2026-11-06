@@ -631,6 +631,181 @@ type GenerateDocumentResult = {
 
 ---
 
+## FASE 8: Product Polish, Provider Onboarding, Publish, dan Conversion UX
+
+> **Validasi per 2026-11-06:**
+> - Provider connection test: **SUDAH ADA**, tetapi berjalan setelah provider tersimpan. Task 8.1 mengubahnya menjadi pre-save validation.
+> - Hide panel: **SUDAH ADA**, tetapi saat ini berupa ikon panel dengan tooltip singkat. Task 8.2 memperjelas affordance dengan label teks, status terbuka/tersembunyi, dan onboarding hint.
+> - Home marketing: **ADA**, tetapi belum menampilkan AI provider, prompt builder, template premium, keamanan, dan export/publish sebagai selling points. Task 8.3 memperluas conversion UX.
+> - Publish: **BELUM ADA**. Saat ini hanya download export HTML. Task 8.4 menambah route publik `/pages/[slug]` dan menu Export/Publish.
+> - Template: **SUDAH ADA 10 template**, tetapi Task 8.5 menambahkan quality gate visual, thumbnail, metadata, kategori, dan regression check.
+
+### Task 8.1: Connection check sebelum provider disimpan
+- **Masalah:** form provider saat ini menyimpan konfigurasi lebih dulu; user baru mengetahui Base URL/API key/model valid setelah menekan aksi Tes.
+- Tambahkan state form `idle | checking | checked | saving | error`.
+- Tambahkan tombol utama **"Cek & Simpan Provider"**. Alurnya wajib:
+  1. Validasi field lokal dengan Zod.
+  2. Panggil endpoint/action test sementara memakai nilai form yang belum disimpan (`baseUrl`, `apiKey`, `model`, `temperature`, `maxTokens`).
+  3. Jika respons 2xx dan `choices[0].message.content` valid → tampilkan checklist sukses (Base URL terjangkau, model merespons, latency) → baru simpan terenkripsi.
+  4. Jika gagal → jangan menulis row `AiProvider`; tampilkan error per kategori: API key, model, Base URL, timeout, koneksi lokal, atau provider tidak kompatibel.
+- Buat service `testProviderCredentials(input)` yang tidak membutuhkan `providerId` dan tidak menyimpan key; gunakan `callChatCompletion` yang sama.
+- Untuk edit provider: jika API key kosong, dekripsi key lama server-side hanya untuk test, lalu simpan konfigurasi jika test sukses. Jangan pernah mengirim key lama ke client.
+- Tombol **Tes ulang** boleh tersedia setelah gagal; tombol Simpan terpisah hanya boleh aktif setelah status `checked` dan nilai form tidak berubah.
+- Tambahkan perubahan nilai invalidation: mengubah Base URL, key, model, temperature, atau max tokens mengembalikan state ke `idle`.
+- Rate limit pre-save test tetap maksimal 10/jam/user. Tambahkan lock double-submit per form.
+- Test wajib: test sukses tidak membuat row sebelum save; test gagal tidak membuat row; key baru tidak masuk response/log; edit tanpa key memakai key lama; perubahan field setelah check wajib test ulang.
+- **Selesai jika:** provider tidak bisa disimpan tanpa connection check sukses dan `api_key_encrypted` tetap ciphertext `v1:...`.
+
+### Task 8.2: Hide panel editor yang lebih informatif
+- **Masalah:** toolbar saat ini terutama menampilkan ikon `PanelLeft`/`PanelRight`; user baru dapat salah mengira tombol sebagai navigasi atau resize.
+- Ganti tombol menjadi tombol informatif:
+  - `Panel blok: Terbuka` / `Panel blok: Tersembunyi`
+  - `Panel properti: Terbuka` / `Panel properti: Tersembunyi`
+- Gunakan icon + label pada lebar desktop; pada toolbar sempit gunakan icon + tooltip yang memuat status lengkap.
+- Tambahkan `aria-label`, `aria-pressed`, `title`, dan helper text pertama kali: "Gunakan tombol ini untuk memberi ruang lebih besar pada kanvas".
+- Saat kedua panel tersembunyi, tampilkan floating control kecil di sisi kiri/kanan kanvas untuk mengembalikan panel tanpa harus memakai keyboard.
+- Shortcut `[` dan `]` tetap bekerja; tampilkan shortcut di tooltip dan menu bantuan editor.
+- Tambahkan `data-testid="toggle-palette"` dan `data-testid="toggle-inspector"` untuk test UI.
+- Pastikan status tersimpan di `localStorage` tidak menyebabkan hydration mismatch atau layout flash yang mengganggu.
+- Test manual acceptance dengan URL editor sample `http://localhost:3000/editor/5fcd199b-6268-4363-aab2-c1030c159c04`: buka/tutup kiri, buka/tutup kanan, tutup keduanya, reload, keyboard navigation, screen reader label.
+- **Selesai jika:** user langsung memahami fungsi kedua tombol tanpa hover, kanvas melebar, panel dapat dipulihkan, dan aksesibilitas lolos.
+
+### Task 8.3: Home page sebagai halaman marketing yang menjual fitur
+- **Validasi saat ini:** Home sudah memiliki hero, 3 fitur, cara kerja, dan CTA, tetapi belum menjelaskan diferensiasi produk.
+- Susun ulang Home dengan section berikut:
+  1. **Hero utama:** headline "Buat halaman web dari drag & drop atau satu prompt"; subheadline menjelaskan editor visual + AI component-safe; CTA `Mulai Gratis` dan `Lihat Demo`.
+  2. **AI Prompt Builder:** jelaskan prompt → JSON komponen tervalidasi → preview → apply → undo. Tampilkan mock UI prompt, bukan klaim model tertentu.
+  3. **Provider milik Anda:** tampilkan OpenAI-compatible, OpenRouter, Groq, DeepSeek, Ollama, LM Studio; jelaskan Base URL + API key terenkripsi dan key tidak dikirim kembali ke browser.
+  4. **Visual editor:** palette, inspector, gradient, background image, logo navbar, custom font, undo/redo.
+  5. **Template gallery:** minimal 6 kartu thumbnail dari template aktif; data boleh statis untuk marketing tetapi copy harus sama dengan seed template.
+  6. **Export vs Publish:** jelaskan download HTML dan publish ke URL publik.
+  7. **Security/trust:** ownership per user, optimistic locking, sanitized HTML, no script injection, encrypted provider keys.
+  8. **Use cases:** SaaS, portfolio, agency, restoran/event/product launch.
+  9. **FAQ:** apakah perlu coding, provider apa yang didukung, apakah API key aman, apakah bisa export HTML, apakah AI menulis HTML bebas.
+  10. **Final CTA:** `Mulai Gratis` + `Buka Editor Demo`.
+- Terapkan anti-slop visual: max-width konsisten 1120–1200px, grid responsive, spacing 8px scale, gradient hero halus, cards dengan border/shadow ringan, typography hierarchy, real content, no lorem ipsum/emoji sebagai ikon.
+- Tambahkan metadata SEO, Open Graph metadata dasar, heading hierarchy satu H1, link keyboard-accessible, dan responsive test 360/768/1280px.
+- Jangan menampilkan API key sungguhan, prompt internal, atau klaim "AI memahami semua desain".
+- **Selesai jika:** Home menjelaskan 5 diferensiasi utama (visual editor, AI, provider sendiri, templates, export/publish), CTA jelas, dan screenshot/preview visual konsisten dengan fitur nyata.
+
+### Task 8.4: Export menu dan public publish
+- **Validasi saat ini:** editor hanya memiliki tombol `Export` yang langsung mengunduh `/api/pages/[pageId]/export`; belum ada menu dropdown dan route publik `/pages/[slug]`.
+- Ubah toolbar menjadi menu **Export** dengan dua pilihan:
+  - **Download HTML:** perilaku existing, menghasilkan `{slug}.html`.
+  - **Publish Page:** buka dialog publish.
+- Tambah field page `isPublished Boolean @default(false)` dan `publishedAt DateTime?`; migration + index `@@index([slug, isPublished])` atau query melalui project/page ownership.
+- Tambah Server Actions:
+  - `publishPageAction({ pageId })`: guard owner, set `isPublished=true`, `publishedAt=now()` dalam transaction.
+  - `unpublishPageAction({ pageId })`: set false/null.
+  - `getPublishStatusAction` tanpa API key/secret.
+- Tambah route publik `app/pages/[slug]/page.tsx`:
+  - `params` wajib di-await.
+  - Cari hanya `deletedAt IS NULL`, `isPublished=true`, dan slug unik berdasarkan aturan produk.
+  - Render `renderHtml(document)` melalui sandbox/preview-safe strategy; jangan memasukkan script user.
+  - `notFound()` untuk draft, deleted page, atau slug tidak dikenal (jangan bocorkan draft).
+  - Metadata title/description dari dokumen.
+- Karena slug saat ini unik per project, tentukan collision policy publik: gunakan route `/pages/[projectSlug]/[pageSlug]` **atau** buat public slug global saat publish. Pilihan wajib didokumentasikan sebelum migration; rekomendasi: route `/pages/[projectId]/[slug]` jika belum ingin menambah project slug.
+- Dialog publish menampilkan URL publik yang bisa disalin, status Published/Draft, tombol Copy URL, Unpublish, dan peringatan bahwa halaman dapat dilihat siapa pun.
+- Tambahkan `Cache-Control` yang aman dan revalidation setelah publish/unpublish. Jangan cache draft/private content.
+- Test: draft 404, published 200, unpublish kembali 404, user lain tidak bisa publish, export tetap bekerja, XSS tetap ter-escape, URL publik tidak membutuhkan login.
+- **Selesai jika:** user dapat memilih Download HTML atau Publish, URL publik tampil dalam format `http://localhost:3000/pages/<name_pages>`, publish/unpublish aman, dan draft tidak bocor.
+
+### Task 8.5: Template gallery yang lebih keren dan quality gate
+- **Validasi saat ini:** terdapat 10 seed template dengan gradient/background/font/logo, tetapi UI picker hanya select nama + deskripsi dan belum memiliki thumbnail/kategori/quality score.
+- Tambahkan field metadata Template (JSON atau kolom terpisah; pilih satu dan dokumentasikan): `category`, `accentColor`, `thumbnailVariant`, `isFeatured`, `sortOrder`.
+- Kategori minimum: SaaS, Portfolio, Agency, Startup, Blog, Product, Event, Restaurant, Pricing, Blank.
+- Buat `template-quality-check.ts` yang memvalidasi setiap seed/template:
+  - parseDocument sukses;
+  - minimal 1 heading, 1 text, 1 CTA untuk template non-Blank;
+  - tidak ada placeholder "Lorem ipsum", "Tulis teks Anda", "Brand Anda", atau URL `javascript:`;
+  - template yang ditandai background punya `backgroundImage` dan overlay valid;
+  - minimal 1 template memakai gradient, 1 memakai image background, 1 memakai logo, 1 memakai font;
+  - renderHtml bebas `<script`, `onerror=`, `javascript:`.
+- Buat thumbnail visual deterministic tanpa screenshot runtime: komponen `TemplateThumbnail` merender mini-preview dari dokumen dengan skala CSS; jangan menyimpan image binary.
+- Page Baru: ganti select polos dengan grid kartu template (1 kolom mobile, 2–3 desktop) berisi thumbnail, kategori, nama, deskripsi, badge `Featured`, dan tombol radio selected. Sediakan card `Mulai kosong`.
+- Admin template list: tampilkan metadata, featured toggle, sort order, preview thumbnail, duplicate template, dan validasi quality sebelum publish/aktif.
+- Seed idempotent: `upsert/update` berdasarkan nama; legacy template dinonaktifkan tanpa menghapus page yang sudah memakainya; template user-created tidak boleh tertimpa seed.
+- Test snapshot/DOM: semua kartu memiliki nama, deskripsi, thumbnail alt, kategori; template terpilih dikirim ke action yang benar.
+- **Selesai jika:** minimal 10 template tampil sebagai kartu visual, setiap template punya quality check hijau, UI tidak terlihat seperti select admin generik, dan page hasil template dapat preview/export.
+
+### Task 8.6: Visual regression dan responsive acceptance
+- Buat checklist screenshot manual untuk:
+  - Home: 360px, 768px, 1280px.
+  - Settings AI: 360px, 1280px.
+  - Editor sample: panel terbuka, kiri tersembunyi, kanan tersembunyi, keduanya tersembunyi pada 1280px.
+  - Template picker: 360px dan 1280px.
+  - Publish dialog dan public page.
+- Pastikan tidak ada horizontal overflow, tombol utama minimum 44px, modal tidak keluar viewport, tooltip tidak terpotong, dan contrast teks minimal WCAG AA.
+- Tambahkan test browser/manual menggunakan `agent-browser` bila tersedia; jika tidak, dokumentasikan langkah reproduksi dan hasil screenshot.
+- **Selesai jika:** semua viewport acceptance tercatat dan tidak ada regressi visual kritis.
+
+### Task 8.8: Ambil daftar model dari provider (`GET /models`)
+- **Validasi saat ini: BELUM ADA.** Model masih diisi manual atau preset statis; tidak ada request `GET {baseUrl}/models` dan tidak ada dropdown model dari provider.
+- **Kontrak umum:** provider OpenAI-compatible biasanya expose `GET {baseUrl}/models` dengan header `Authorization: Bearer <apiKey>` dan respons `{ "data": [{ "id": "model-id", ... }] }`, tetapi tidak semua provider mendukungnya. Fitur wajib punya fallback manual.
+- Buat `server/ai/models-client.ts` dengan `listProviderModels({ baseUrl, apiKey, signal })`:
+  - Gunakan `getModelsUrl(baseUrl)` yang menghasilkan `${canonicalBaseUrl}/models` tanpa double slash.
+  - Validasi Base URL/SSRF memakai `assertSafeBaseUrl` sebelum request.
+  - Method `GET`, `redirect: "manual"`, timeout sama dengan `AI_REQUEST_TIMEOUT_MS`, `Authorization` header hanya server-side.
+  - Batasi body maksimal 512 KB; parse Zod response `{ data: [{ id: string; object?: string; owned_by?: string }] }`.
+  - Hanya kembalikan model dengan `id` non-empty, trim, unique, maksimal 100 item, urut alfabetis case-insensitive.
+  - Jangan kembalikan response mentah, API key, header, atau detail jaringan.
+  - Error mapping: 401/403 API key ditolak; 404 endpoint tidak tersedia; 429 rate limited; 5xx provider error; timeout/network error. Semua pesan Bahasa Indonesia.
+- Provider capability:
+  - Tambahkan tipe `ProviderModelOption { id: string; label: string; ownedBy?: string }`.
+  - `GET /models` gagal **tidak boleh** menghalangi penyimpanan provider atau penggunaan model manual.
+  - Jika response 404/405, UI menampilkan "Provider tidak menyediakan daftar model otomatis" dan mempertahankan input model manual.
+  - Jangan fallback ke model yang ditebak dari nama provider; fallback hanya ke model yang diisi manual/preset.
+- Buat action `listProviderModelsAction(input: { providerId?: string; baseUrl?: string; apiKey?: string })`:
+  - `requireUser()` wajib di awal.
+  - Mode provider tersimpan: `providerId` → ambil encrypted key milik user, dekripsi server-side, panggil `/models`.
+  - Mode sebelum simpan: `baseUrl` + `apiKey` dari form, panggil `/models` tanpa menyimpan data.
+  - API key tidak pernah keluar di `ActionResult`.
+  - Rate limit: maksimal 10 request model per user per jam, termasuk retry UI.
+- UI provider dialog:
+  - Tambahkan tombol **"Ambil daftar model"** di samping field Model.
+  - Saat loading: tombol disabled + teks "Memuat model...".
+  - Jika sukses: ubah field model menjadi searchable combobox dengan label model dan optional `owned_by`; tetap sediakan pilihan "Isi manual".
+  - Jika gagal 404/405: tampilkan hint non-blocking, jangan menghapus model yang sudah diisi.
+  - Jika gagal auth/network: tampilkan error actionable, jangan submit form otomatis.
+  - Saat Base URL/API key berubah, daftar model lama invalid dan tombol harus ditekan ulang.
+  - Saat preset provider dipilih, isi Base URL/model default; jangan melakukan network call otomatis sebelum user menekan tombol.
+- UI editor AI panel:
+  - Provider yang tersimpan menampilkan model aktif.
+  - Jika model provider sudah tidak tersedia, tampilkan warning dan link ke `/settings/ai` untuk memilih model lain.
+- Cache server-side:
+  - Cache daftar model per `userId + providerId + baseUrl` maksimal 5 menit (in-memory untuk single instance).
+  - Jangan cache API key; cache hanya daftar model publik dan timestamp.
+  - Invalidate cache saat provider diubah/dihapus.
+- Test wajib:
+  1. `GET /models` sukses dengan 3 model → hasil unique dan alfabetis.
+  2. Respons tanpa `data`, `data` bukan array, item tanpa `id`, duplikasi → hasil aman atau error validasi.
+  3. 401/403/404/405/429/500/timeout → error mapping benar, key tidak bocor.
+  4. Base URL trailing slash → URL tepat `/models`, bukan `//models`.
+  5. SSRF/private URL/redirect → ditolak sebelum fetch.
+  6. Mode unsaved provider tidak membuat row database.
+  7. Cache hit tidak melakukan fetch kedua dalam 5 menit; perubahan Base URL invalidates cache.
+  8. UI tetap dapat menyimpan dan memakai model manual jika endpoint tidak didukung.
+- **Selesai jika:** provider dapat mengambil daftar model secara aman, user tetap dapat memilih model manual, API key tidak pernah bocor, dan seluruh test model client/action/UI hijau.
+
+### Task 8.7: Final acceptance matrix untuk request ini
+
+| Fitur | Kasus | Expected |
+|---|---|---|
+| Provider onboarding | key valid, URL valid | check sukses lalu provider tersimpan terenkripsi |
+| Provider onboarding | key invalid, URL invalid, timeout | tidak tersimpan, pesan actionable |
+| Panel editor | toggle kiri/kanan/keduanya | label jelas, kanvas melebar, reload mempertahankan state |
+| Home | guest, logged-in, mobile | selling points nyata, CTA valid, layout responsive |
+| Export menu | Download HTML | file HTML terunduh seperti sebelumnya |
+| Publish | publish/unpublish/draft | public URL hanya menampilkan published page |
+| Template | picker mobile/desktop | kartu visual, metadata, preview, selection benar |
+| Security | public page dengan unsafe document | output tetap escaped tanpa script |
+| Regression | login/dashboard/editor/autosave | semua alur existing tetap hijau |
+
+- Jalankan `npm run typecheck && npm run lint && npm test && npm run build`.
+- **Selesai jika:** semua baris matrix memiliki bukti dan working tree hanya berisi perubahan yang memang terkait task.
+
+---
+
 ## Ringkasan Definisi Selesai (Definition of Done) MVP
 
 1. User dapat register, login, logout.
