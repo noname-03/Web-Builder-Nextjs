@@ -136,3 +136,22 @@ Server Action memeriksa ukuran payload `JSON.stringify(content).length` sebelum 
 - [ ] `passwordHash`/`tokenHash` tidak pernah keluar dari layer server.
 - [ ] `.env` ada di `.gitignore`.
 - [ ] Cookie session `httpOnly`, `sameSite=lax`.
+
+## 5.13 AI Provider (Prompt Builder)
+
+| Area | Aturan |
+|---|---|
+| **Penyimpanan key** | API key dienkripsi AES-256-GCM (`iv` 12 byte, auth tag 16 byte, format `v1:<iv>:<tag>:<cipher>`). Kunci dari `ENCRYPTION_KEY` (32 byte base64). Dekripsi hanya dilakukan tepat sebelum request. |
+| **Eksposur key** | Key/ciphertext tidak pernah dikirim ke client, tidak masuk `AiGeneration`, tidak masuk log, dan tidak muncul di pesan error. UI hanya menampilkan `••••` + 4 karakter terakhir. |
+| **Rotasi kunci** | `npm run ai:reencrypt -- --dry-run` lalu tanpa `--dry-run`. Jika dekripsi gagal, minta user menyimpan ulang provider. |
+| **SSRF** | `assertSafeBaseUrl` dijalankan saat simpan dan setiap request: hanya https (kecuali localhost di development), tanpa credential/query/fragment, tanpa IP privat/metadata, redirect ditolak. |
+| **Prompt injection** | Prompt user diperlakukan sebagai data dengan delimiter; hasil WAJIB JSON dokumen builder dan selalu melewati `sanitizeAiDocument` + `parseDocument`. Tidak ada `eval`, HTML mentah, atau `dangerouslySetInnerHTML`. |
+| **Output sanitization** | Style di luar whitelist dibuang, gradient/URL diverifikasi ulang, id duplikat/tidak valid diregenerasi, font tidak aman dibuang, maksimal 500 blok. |
+| **Rate limit & biaya** | Generate maks `AI_RATE_LIMIT_PER_HOUR` per user per jam (dihitung dari `ai_generations`). Tes koneksi maks 10/jam. `maxTokens` dibatasi 256–32000. |
+| **Concurrency** | Satu generate aktif per `userId+pageId`; permintaan kedua mendapat `CONFLICT`. Tombol UI disabled saat proses berjalan. |
+| **Timeout** | `AI_REQUEST_TIMEOUT_MS` (default 60 detik) memakai `AbortController`. Tidak ada dokumen setengah jadi yang disimpan. |
+| **Konflik revisi** | Pratinjau menampilkan peringatan jika `revision` halaman berubah sejak permintaan dibuat; penerapan tetap atas konfirmasi user. |
+| **Retensi** | `AiGeneration` menyimpan prompt terpotong (maks 4000 karakter), tanpa respons mentah. `npm run ai:cleanup` menghapus data > 90 hari. User dapat menghapus riwayat dari panel AI. |
+| **Isolasi** | Semua query provider/generation memfilter `userId`; akses data user lain → `NOT_FOUND`. |
+
+Checklist verifikasi: key tidak muncul di log/respons, ciphertext berformat `v1:`, SSRF ditolak, output AI selalu valid, double submit dicegah, dan `npm run typecheck && npm run lint && npm test && npm run build` hijau.

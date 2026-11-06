@@ -300,7 +300,7 @@ Buat test `vitest` minimal:
 
 ## FASE 6: Editor Ergonomics & Template Quality
 
-> Status per 2026-11-05: hasil validasi ada di tiap task. Tidak ada perubahan tabel database.
+> Status per 2026-11-06: **sudah diimplementasikan** (Task 6.1–6.4). Panel kiri/kanan punya toggle + shortcut + preferensi localStorage, seed berisi 10 template bergaya (gradient, background image, font Inter, logo navbar), dan polish UI utama sudah diterapkan. Tidak ada perubahan tabel database.
 
 ### Task 6.1: Sembunyikan/tampilkan panel kiri dan kanan
 **Validasi saat ini: BELUM ADA.** `Palette` dan `Inspector` masing-masing memakai `hidden … lg:block` tanpa state toggle; tidak ada tombol, shortcut, atau penyimpanan preferensi. Kanvas tidak pernah melebar.
@@ -356,7 +356,11 @@ Buat test `vitest` minimal:
 
 ## FASE 7: AI Prompt Builder (Generate Halaman dari Prompt)
 
-> **Validasi saat ini: SELURUHNYA BELUM ADA.** Tidak ada kode untuk panggilan LLM, tabel konfigurasi AI, enkripsi data sensitif, kolom prompt di editor, maupun `ENCRYPTION_KEY` di `.env.example`. `OPENAI`/`chat/completions`/`createCipheriv` tidak ditemukan di `src/` dan `prisma/`.
+> **Status per 2026-11-06: SUDAH DIIMPLEMENTASIKAN (Task 7.1–7.27), dengan dua catatan debt:**
+> - Dashboard admin `/admin/ai` (7.12, opsional) belum dibuat — riwayat per user sudah tersedia di panel AI.
+> - Koordinator request (7.19) bersifat in-memory per instance; batas utama tetap rate limit database, sehingga multi-instance deployment perlu koordinasi tambahan (mis. Redis/DB lock).
+>
+> Tersedia: AES-256-GCM secret box + rotasi kunci, tabel `ai_providers`/`ai_generations` dengan partial unique index, CRUD provider + tes koneksi, klien Chat Completions, katalog komponen otomatis, prompt builder anti-injection, sanitizer + repair, panel Asisten AI dengan pratinjau/apply/undo/history, rate limit, SSRF guard, logger teredaksi, retention script, dan unit test.
 >
 > **Tujuan:** user mengetik prompt (mis. "Buat landing page SaaS HR dengan hero gradasi biru") dan sistem menghasilkan/mengubah dokumen builder **hanya memakai komponen (blok) milik kita**. Output LLM bukan HTML bebas, melainkan **JSON dokumen builder** yang divalidasi `parseDocument`, sehingga aman dan tetap bisa diedit di editor.
 >

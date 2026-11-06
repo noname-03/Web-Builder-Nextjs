@@ -111,3 +111,51 @@ $env:PRISMA_ENGINES_CHECKSUM_IGNORE_MISSING="1"; $env:NODE_TLS_REJECT_UNAUTHORIZ
 ```
 
 Hanya untuk mesin development lokal.
+
+## AI Prompt Builder
+
+Editor memiliki tab **Asisten AI** untuk membuat atau mengubah halaman dari prompt. Hasil AI hanya memakai blok yang tersedia di editor dan harus dikonfirmasi lewat pratinjau sebelum diterapkan.
+
+### 1. Buat encryption key
+
+API key provider disimpan terenkripsi (AES-256-GCM) di database. Wajib ada `ENCRYPTION_KEY` 32 byte base64:
+
+```bash
+node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+Salin hasilnya ke `.env` sebagai `ENCRYPTION_KEY`. Jangan commit nilai ini.
+
+### 2. Tambah provider
+
+Buka `/settings/ai`, lalu isi:
+
+- **Base URL** contoh: `https://api.openai.com/v1`, `https://openrouter.ai/api/v1`, `https://api.groq.com/openai/v1`, `https://api.deepseek.com/v1`
+- **API key** provider
+- **Model** (mis. `gpt-4o-mini`, `llama-3.3-70b-versatile`, `deepseek-chat`)
+
+Provider lokal (`http://localhost:11434/v1` untuk Ollama, `http://localhost:1234/v1` untuk LM Studio) hanya diizinkan saat development.
+
+API key tidak pernah dikirim kembali ke browser; UI hanya menampilkan 4 karakter terakhir. Gunakan tombol **Tes** untuk memverifikasi koneksi.
+
+### 3. Operasional
+
+| Perintah | Fungsi |
+|---|---|
+| `npm run ai:cleanup` | Hapus riwayat AI lebih tua dari 90 hari (env `AI_RETENTION_DAYS`, `AI_CLEANUP_BATCH`) |
+| `npm run ai:reencrypt` | Re-enkripsi seluruh API key setelah rotasi kunci |
+
+Rotasi kunci:
+
+```bash
+AI_REENCRYPT_OLD_KEY="<key-lama>" AI_REENCRYPT_NEW_KEY="<key-baru>" npm run ai:reencrypt -- --dry-run
+AI_REENCRYPT_OLD_KEY="<key-lama>" AI_REENCRYPT_NEW_KEY="<key-baru>" npm run ai:reencrypt
+```
+
+Setelah rotasi, perbarui `ENCRYPTION_KEY` di `.env`.
+
+### Batasan
+
+- Endpoint harus kompatibel dengan `POST {baseUrl}/chat/completions`.
+- Konten halaman dikirim ke provider yang dipilih user; jangan mengatur provider pihak ketiga tanpa persetujuan pengguna.
+- Prompt injection tidak dapat mengubah format keluaran karena hasil selalu divalidasi `parseDocument` dan disanitasi sebelum dipakai.
