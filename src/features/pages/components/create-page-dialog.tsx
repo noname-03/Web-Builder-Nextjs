@@ -1,15 +1,86 @@
 "use client";
 
+import { clsx } from "clsx";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
-import { FormError, Input, Label, Select } from "@/components/ui/input";
+import { FormError, Input, Label } from "@/components/ui/input";
 import { createPageAction } from "@/features/pages/actions";
+import { UNKNOWN_TEMPLATE_META, getTemplateMeta } from "@/features/templates/template-meta";
+import { TemplateThumbnail } from "@/features/templates/template-thumbnail";
 import type { ActionError } from "@/lib/result";
 
 type Template = { id: string; name: string; description: string | null };
+
+function TemplateCard({
+  name,
+  description,
+  accentFallback,
+  selected,
+  disabled,
+  badge,
+  onSelect,
+}: {
+  name: string;
+  description: string | null;
+  accentFallback: string;
+  selected: boolean;
+  disabled: boolean;
+  badge?: string;
+  onSelect: () => void;
+}) {
+  const meta = getTemplateMeta(name);
+  const featured = meta.isFeatured;
+
+  return (
+    <button
+      type="button"
+      aria-pressed={selected}
+      disabled={disabled}
+      onClick={onSelect}
+      className={clsx(
+        "flex h-full flex-col gap-2 rounded-lg border p-2 text-left transition-colors",
+        selected
+          ? "border-blue-500 ring-2 ring-blue-500"
+          : "border-slate-200 hover:border-slate-300 hover:bg-slate-50",
+        disabled && "cursor-not-allowed opacity-60",
+      )}
+    >
+      <TemplateThumbnail meta={meta} name={name} />
+      <span className="flex items-start justify-between gap-2">
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-slate-900">{name}</span>
+          <span className="mt-1 flex flex-wrap items-center gap-1">
+            <span
+              className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium"
+              style={{ backgroundColor: `${accentFallback}1f`, color: accentFallback }}
+            >
+              {badge ?? meta.category}
+            </span>
+            {featured ? (
+              <span className="inline-flex rounded-full bg-amber-100 px-2 py-0.5 text-[11px] font-medium text-amber-800">
+                Unggulan
+              </span>
+            ) : null}
+          </span>
+        </span>
+        {selected ? (
+          <span
+            aria-hidden="true"
+            className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded-full bg-blue-600 text-[11px] font-bold text-white"
+          >
+            ✓
+          </span>
+        ) : null}
+      </span>
+      <span className="text-xs leading-relaxed text-slate-500">
+        {description || "Template siap pakai."}
+      </span>
+    </button>
+  );
+}
 
 export function CreatePageDialog({
   projectId,
@@ -24,6 +95,9 @@ export function CreatePageDialog({
   const [templateId, setTemplateId] = useState("");
   const router = useRouter();
   const selectedTemplate = templates.find((template) => template.id === templateId);
+  const orderedTemplates = [...templates].sort(
+    (left, right) => getTemplateMeta(left.name).sortOrder - getTemplateMeta(right.name).sortOrder,
+  );
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -68,20 +142,36 @@ export function CreatePageDialog({
               <FormError messages={error?.fieldErrors?.title} />
             </div>
             <div>
-              <Label htmlFor="page-template">Template</Label>
-              <Select
-                id="page-template"
-                name="templateId"
-                value={templateId}
-                onChange={(event) => setTemplateId(event.target.value)}
+              <span id="page-template-label" className="mb-1 block text-sm font-medium text-slate-700">
+                Pilih template
+              </span>
+              <input type="hidden" name="templateId" value={templateId} />
+              <div
+                role="group"
+                aria-labelledby="page-template-label"
+                className="grid max-h-[46vh] grid-cols-1 gap-3 overflow-y-auto pr-1 sm:grid-cols-2"
               >
-                <option value="">Halaman kosong</option>
-                {templates.map((template) => (
-                  <option key={template.id} value={template.id} title={template.description ?? ""}>
-                    {template.name}
-                  </option>
+                <TemplateCard
+                  name="Mulai kosong"
+                  description="Kanvas kosong tanpa blok, siap kamu susun sendiri."
+                  accentFallback={UNKNOWN_TEMPLATE_META.accentColor}
+                  badge="Kosong"
+                  selected={templateId === ""}
+                  disabled={pending}
+                  onSelect={() => setTemplateId("")}
+                />
+                {orderedTemplates.map((template) => (
+                  <TemplateCard
+                    key={template.id}
+                    name={template.name}
+                    description={template.description}
+                    accentFallback={getTemplateMeta(template.name).accentColor}
+                    selected={templateId === template.id}
+                    disabled={pending}
+                    onSelect={() => setTemplateId(template.id)}
+                  />
                 ))}
-              </Select>
+              </div>
               <p className="mt-1 min-h-4 text-xs text-slate-500">
                 {selectedTemplate?.description || "Mulai dari kanvas kosong."}
               </p>
